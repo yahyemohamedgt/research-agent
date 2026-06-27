@@ -1,0 +1,3 @@
+# YouTube node fetches transcripts via yt-dlp for the top 3 videos
+
+YouTube Data API v3 returns titles, descriptions, view counts, and channel names. That is not enough to produce verbatim phrases — titles are too short and descriptions are often timestamps and links. The YouTube node fetches auto-generated captions via yt-dlp for the top 3 highest-view results, making YouTube signal as rich as Reddit for spoken community language. yt-dlp is a system dependency installed at Railway build time with one Dockerfile line. If transcript fetch fails for a video, the node falls back to the video's description and continues — the collector never fails over one video's missing captions.

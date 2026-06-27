@@ -1,0 +1,3 @@
+# AgentError is a structured return type — not a raised exception
+
+When the agent exhausts its retry budget, `run_agent` returns an `AgentError` TypedDict rather than raising an exception. Every caller — CLI, FastAPI endpoint, OpenClaw webhook — handles the failure path by inspecting a return value, not by wrapping the call in try/except. This matters most when callers are heterogeneous: the CLI prints the error as JSON, FastAPI returns it as a 422 body, OpenClaw formats it as a WhatsApp message. All three paths are identical — check the return type, branch on `Brief` vs `AgentError`. Exception-based failure would require each caller to catch, reformat, and re-surface the error independently.

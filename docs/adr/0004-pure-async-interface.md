@@ -1,0 +1,3 @@
+# run_agent is a pure async function — CLI and FastAPI are thin wrappers
+
+The agent exposes a single async function: `run_agent(audience: str, question: str) -> Brief | AgentError`. The CLI calls it and prints JSON. FastAPI will call it and return JSON. OpenClaw will call it the same way. Nothing inside the agent knows what is calling it. `AgentError` is a structured return type, not a raised exception, so every caller handles failure the same way without try/catch logic scattered across entry points. Designing CLI-first with argparse and retrofitting later means untangling stdout formatting from agent logic at the wrong moment — typically when the first external caller needs to be added.

@@ -1,0 +1,3 @@
+# Signal is GREEN/RED with reasoning — no numeric confidence score
+
+The Brief's signal judgment is `Literal["GREEN", "RED"]` accompanied by a one-to-two sentence `signal_reasoning` field. There is no numeric score (no 7/10, no 0.73 confidence). A number requires the caller to decide what threshold matters; reasoning tells the caller what is actually true about the signal. "Community is loud on the fear angle but skews 35+ and your audience is younger" is actionable. 6.5 is not. The `decision_summary` field reinforces this — one paragraph of plain English written for someone who will not read the verbatim phrases, optimised for WhatsApp delivery where a score would arrive with no context.
