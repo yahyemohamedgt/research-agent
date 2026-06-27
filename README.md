@@ -2,14 +2,18 @@
 
 A LangGraph agent that takes an audience description and research question, collects organic signal across 10 platforms, and returns a structured creative brief for media buyers.
 
+**Status: v2 complete — production API with persistence and eval**
+
 ## What it does
 
 Given an audience (e.g. "working class parents in the US") and a research question (e.g. "Are they worried AI will affect their children's job prospects?"), the agent:
 
 1. **Plans** — generates platform-specific search queries tailored to the audience
-2. **Collects** — pulls signal from 10 sources in parallel
+2. **Collects** — pulls signal from 10 sources in parallel, each protected by a circuit breaker
 3. **Gates** — rejects low-volume or off-topic corpora and retries with broader queries
 4. **Synthesizes** — produces a structured brief with hooks, angles, verbatim phrases, and media buying signals
+5. **Evaluates** — runs a hallucination check against the raw corpus and a GPT-4o-mini quality judge
+6. **Persists** — stores every brief, eval scores, and run metadata in Supabase
 
 ## Platforms
 
@@ -26,23 +30,43 @@ Given an audience (e.g. "working class parents in the US") and a research questi
 | Hacker News | HN Algolia public API |
 | GitHub | GitHub issues search API |
 
-## Output
+## API
 
+```bash
+# Start the server
+uvicorn api:app --reload
+
+# Submit a research run
+POST /research
+{"audience": "...", "question": "..."}
+→ {"job_id": "uuid", "status": "queued"}
+
+# Poll for results
+GET /research/{job_id}
+→ {"status": "complete", "brief": {...}, "elapsed_seconds": N}
+
+# Health
+GET /health
+→ {"status": "ok", "version": "2.0"}
+
+# Collector circuit breaker status
+GET /health/collectors
+→ {"collectors": [{"name": "reddit", "state": "CLOSED", "failures": 0}, ...]}
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RESEARCH BRIEF
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Audience:  working class parents in the US
-Signal:    GREEN — strong, consistent anxiety across Reddit and TikTok
-Emotion:   fear / protectiveness
-Urgency:   HIGH
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CREATIVE AMMUNITION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Hook:      "I didn't survive to watch a robot take my kid's shot"
-Angle:     Parental sacrifice framing — they worked hard so their kids wouldn't have to
-...
+## New in v2
+
+- **FastAPI async API** — `POST /research`, `GET /research/:id`, fire-and-forget background jobs
+- **Supabase persistence** — every brief, eval scores, cost, and run time stored per job
+- **Eval layer** — pure-Python hallucination check against the raw corpus + GPT-4o-mini judge scoring specificity, evidence, actionability, and hook quality
+- **Circuit breakers** — all 10 collectors protected; OPEN after 3 failures, auto-recovery after 10 min
+- **GET /health/collectors** — real-time circuit breaker state for all collectors
+- **OpenAI API** — GPT-4o-mini for cross-model eval (Sonnet synthesizes, GPT-4o-mini judges)
+
+## CLI (v1)
+
+```bash
+python3 main.py "audience description" "research question"
 ```
 
 ## Setup
@@ -55,17 +79,7 @@ cp .env.example .env
 # fill in your API keys in .env
 ```
 
-## Usage
-
-```bash
-python3 main.py "audience description" "research question"
-```
-
-Example:
-
-```bash
-python3 main.py "working class parents in the US" "Are they worried AI will affect their children's job prospects?"
-```
+Run `schema.sql` in your Supabase SQL editor to create the `research_jobs` table.
 
 ## Environment variables
 
@@ -76,19 +90,26 @@ XAI_API_KEY=
 EXA_API_KEY=
 YOUTUBE_API_KEY=
 FOREPLAY_API_KEY=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+OPENAI_API_KEY=
 LANGCHAIN_API_KEY=          # optional, for LangSmith tracing
 LANGCHAIN_TRACING_V2=true   # optional
 LANGCHAIN_PROJECT=research-agent
 ```
+
+## Stack
+
+LangGraph · LangChain Anthropic · FastAPI · uvicorn · Supabase · OpenAI API
 
 ## Architecture
 
 ```
 plan → [collect_reddit, collect_exa, collect_youtube, collect_foreplay,
          collect_twitter, collect_tiktok, collect_instagram, collect_threads,
-         collect_hn, collect_github] → quality_gate → synthesize
-                                              ↓ (fail + retry)
-                                            plan
+         collect_hn, collect_github] → quality_gate → synthesize → eval
+                                              ↓ (fail + retry)                    ↓
+                                            plan                            supabase_client
 ```
 
-Built with [LangGraph](https://github.com/langchain-ai/langgraph) and [LangChain Anthropic](https://github.com/langchain-ai/langchain).
+Each collector is wrapped in a `CircuitBreaker` — on 3 consecutive failures the collector goes OPEN and returns `[]` immediately, allowing the rest of the run to continue with graceful degradation.
