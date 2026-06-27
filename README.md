@@ -64,7 +64,7 @@ python3 main.py "audience description" "research question"
 Example:
 
 ```bash
-python3 main.py "Muslim immigrants in the US" "Are they anxious about AI taking their jobs?"
+python3 main.py "working class parents in the US" "Are they worried AI will affect their children's job prospects?"
 ```
 
 ## Environment variables
