@@ -10,6 +10,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
+from circuit_breaker import get_breaker
 from state import AgentState
 
 _PLAN_TOOL = {
@@ -213,16 +214,13 @@ _SC_REDDIT = "https://api.scrapecreators.com/v1/reddit"
 
 
 def collect_reddit(state: AgentState) -> dict:
-    plan = state["query_plan"]
-    query = plan["reddit_search_query"]
-    posts = []
-    seen_ids: set[str] = set()
-    candidates = []
-    try:
-        # Global search first
+    def _fetch():
+        plan = state["query_plan"]
+        query = plan["reddit_search_query"]
+        posts = []
+        seen_ids: set[str] = set()
         raw = _sc_get(f"{_SC_REDDIT}/search", {"query": query, "sort": "relevance", "timeframe": "month"})
         candidates = raw.get("posts") or raw.get("data") or []
-        # Per-subreddit search
         for sub in plan["subreddits"]:
             if len(candidates) >= 150:
                 break
@@ -231,39 +229,37 @@ def collect_reddit(state: AgentState) -> dict:
                 candidates.extend(r.get("posts") or r.get("data") or [])
             except Exception:
                 continue
-    except Exception:
-        pass
-    for post in candidates:
-        post_id = str(post.get("id", ""))
-        if post_id and post_id in seen_ids:
-            continue
-        if post_id:
-            seen_ids.add(post_id)
-        permalink = post.get("permalink", "")
-        url = f"https://www.reddit.com{permalink}" if permalink else post.get("url", "")
-        sub = post.get("subreddit", "")
-        if isinstance(sub, dict):
-            sub = sub.get("display_name", "")
-        posts.append({
-            "title": post.get("title", ""),
-            "selftext": post.get("selftext", ""),
-            "url": url,
-            "score": post.get("score") or post.get("votes") or post.get("ups") or 0,
-            "subreddit": sub,
-            "comments": [],
-        })
-    return {"reddit_posts": posts}
+        for post in candidates:
+            post_id = str(post.get("id", ""))
+            if post_id and post_id in seen_ids:
+                continue
+            if post_id:
+                seen_ids.add(post_id)
+            permalink = post.get("permalink", "")
+            url = f"https://www.reddit.com{permalink}" if permalink else post.get("url", "")
+            sub = post.get("subreddit", "")
+            if isinstance(sub, dict):
+                sub = sub.get("display_name", "")
+            posts.append({
+                "title": post.get("title", ""),
+                "selftext": post.get("selftext", ""),
+                "url": url,
+                "score": post.get("score") or post.get("votes") or post.get("ups") or 0,
+                "subreddit": sub,
+                "comments": [],
+            })
+        return {"reddit_posts": posts}
+    return get_breaker("reddit").call(_fetch) or {"reddit_posts": []}
 
 
 def collect_exa(state: AgentState) -> dict:
-    results = []
-    try:
+    def _fetch():
         response = _exa.search_and_contents(
             state["query_plan"]["exa_query"],
             highlights=True,
             num_results=10,
         )
-        results = [
+        return {"exa_results": [
             {
                 "url": r.url,
                 "title": r.title,
@@ -271,10 +267,8 @@ def collect_exa(state: AgentState) -> dict:
                 "published_date": r.published_date,
             }
             for r in response.results
-        ]
-    except Exception:
-        pass
-    return {"exa_results": results}
+        ]}
+    return get_breaker("exa").call(_fetch) or {"exa_results": []}
 
 
 def _fetch_transcript(video_id: str) -> str | None:
@@ -301,11 +295,9 @@ def _fetch_transcript(video_id: str) -> str | None:
 
 
 def collect_youtube(state: AgentState) -> dict:
-    videos = []
-    try:
+    def _fetch():
         seen_ids: set[str] = set()
         candidates = []
-
         for term in state["query_plan"]["youtube_terms"]:
             try:
                 resp = _youtube.search().list(
@@ -322,19 +314,16 @@ def collect_youtube(state: AgentState) -> dict:
                         })
             except Exception:
                 continue
-
         if not candidates:
             return {"youtube_videos": []}
-
         ids_str = ",".join(c["video_id"] for c in candidates)
         stats = _youtube.videos().list(part="statistics", id=ids_str).execute()
         view_counts = {
             item["id"]: int(item["statistics"].get("viewCount", 0))
             for item in stats.get("items", [])
         }
-
         candidates.sort(key=lambda c: view_counts.get(c["video_id"], 0), reverse=True)
-
+        videos = []
         for i, c in enumerate(candidates[:10]):
             vid_id = c["video_id"]
             videos.append({
@@ -345,14 +334,12 @@ def collect_youtube(state: AgentState) -> dict:
                 "description": c["description"],
                 "transcript": _fetch_transcript(vid_id) if i < 3 else None,
             })
-    except Exception:
-        pass
-    return {"youtube_videos": videos}
+        return {"youtube_videos": videos}
+    return get_breaker("youtube").call(_fetch) or {"youtube_videos": []}
 
 
 def collect_foreplay(state: AgentState) -> dict:
-    ads = []
-    try:
+    def _fetch():
         url = "https://public.api.foreplay.co/api/discovery/ads?" + urllib.parse.urlencode({
             "query": state["query_plan"]["foreplay_query"],
             "order": "longest_running",
@@ -366,7 +353,7 @@ def collect_foreplay(state: AgentState) -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
         items = data.get("data") or (data if isinstance(data, list) else [])
-        ads = [
+        return {"foreplay_ads": [
             {
                 "ad_id": ad.get("id"),
                 "hook_text": ad.get("headline") or ad.get("description"),
@@ -376,18 +363,15 @@ def collect_foreplay(state: AgentState) -> dict:
                 "url": ad.get("link_url") or ad.get("foreplay_url"),
             }
             for ad in items
-        ]
-    except Exception:
-        pass
-    return {"foreplay_ads": ads}
+        ]}
+    return get_breaker("foreplay").call(_fetch) or {"foreplay_ads": []}
 
 
 _XAI_URL = "https://api.x.ai/v1/responses"
 _XAI_MODEL = "grok-3"
 
 def collect_twitter(state: AgentState) -> dict:
-    posts = []
-    try:
+    def _fetch():
         payload = json.dumps({
             "model": _XAI_MODEL,
             "tools": [{"type": "x_search"}],
@@ -411,32 +395,31 @@ def collect_twitter(state: AgentState) -> dict:
         )
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read())
-        # extract text output from response
         output_text = ""
         for block in data.get("output", []):
             for part in block.get("content", []):
                 if part.get("type") == "output_text":
                     output_text += part.get("text", "")
         parsed = json.loads(output_text) if output_text.strip().startswith("{") else {}
-        for item in (parsed.get("items") or [])[:15]:
-            posts.append({
+        return {"twitter_posts": [
+            {
                 "text": item.get("text", ""),
                 "url": item.get("url", ""),
                 "like_count": item.get("like_count") or (item.get("engagement") or {}).get("likes") or 0,
                 "retweet_count": item.get("retweet_count") or (item.get("engagement") or {}).get("reposts") or 0,
-            })
-    except Exception:
-        pass
-    return {"twitter_posts": posts}
+            }
+            for item in (parsed.get("items") or [])[:15]
+        ]}
+    return get_breaker("twitter").call(_fetch) or {"twitter_posts": []}
 
 
 def collect_tiktok(state: AgentState) -> dict:
-    videos = []
-    try:
+    def _fetch():
         data = _sc_get(
             "https://api.scrapecreators.com/v1/tiktok/search/keyword",
             {"query": state["query_plan"]["tiktok_query"], "sort_by": "relevance"},
         )
+        videos = []
         for entry in (data.get("search_item_list") or data.get("data") or [])[:15]:
             item = entry.get("aweme_info", entry) if isinstance(entry, dict) else entry
             stats = item.get("statistics") or {}
@@ -454,14 +437,12 @@ def collect_tiktok(state: AgentState) -> dict:
                 "like_count": stats.get("digg_count", 0),
                 "url": url,
             })
-    except Exception:
-        pass
-    return {"tiktok_videos": videos}
+        return {"tiktok_videos": videos}
+    return get_breaker("tiktok").call(_fetch) or {"tiktok_videos": []}
 
 
 def collect_instagram(state: AgentState) -> dict:
-    posts = []
-    try:
+    def _fetch():
         data = _sc_get(
             "https://api.scrapecreators.com/v2/instagram/reels/search",
             {"query": state["query_plan"]["instagram_query"]},
@@ -470,6 +451,7 @@ def collect_instagram(state: AgentState) -> dict:
             data.get("reels") or data.get("data") or data.get("items")
             or (data if isinstance(data, list) else [])
         )
+        posts = []
         for raw in raw_items[:15]:
             caption = raw.get("caption", "")
             if isinstance(caption, dict):
@@ -487,14 +469,12 @@ def collect_instagram(state: AgentState) -> dict:
                     f"https://www.instagram.com/reel/{shortcode}" if shortcode else ""
                 ),
             })
-    except Exception:
-        pass
-    return {"instagram_posts": posts}
+        return {"instagram_posts": posts}
+    return get_breaker("instagram").call(_fetch) or {"instagram_posts": []}
 
 
 def collect_threads(state: AgentState) -> dict:
-    posts = []
-    try:
+    def _fetch():
         data = _sc_get(
             "https://api.scrapecreators.com/v1/threads/search",
             {"query": state["query_plan"]["threads_query"]},
@@ -503,6 +483,7 @@ def collect_threads(state: AgentState) -> dict:
             data.get("items") or data.get("data") or data.get("threads")
             or data.get("posts") or data.get("search_results") or []
         )
+        posts = []
         for raw in raw_items[:15]:
             text = raw.get("text") or raw.get("caption") or raw.get("content") or ""
             if isinstance(text, dict):
@@ -516,14 +497,12 @@ def collect_threads(state: AgentState) -> dict:
                     f"https://www.threads.net/t/{code}" if code else ""
                 ),
             })
-    except Exception:
-        pass
-    return {"threads_posts": posts}
+        return {"threads_posts": posts}
+    return get_breaker("threads").call(_fetch) or {"threads_posts": []}
 
 
 def collect_hn(state: AgentState) -> dict:
-    stories = []
-    try:
+    def _fetch():
         url = "https://hn.algolia.com/api/v1/search?" + urllib.parse.urlencode({
             "query": state["query_plan"]["hn_query"],
             "tags": "story",
@@ -531,6 +510,7 @@ def collect_hn(state: AgentState) -> dict:
         })
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = json.loads(resp.read())
+        stories = []
         for hit in data.get("hits", []):
             obj_id = hit.get("objectID", "")
             stories.append({
@@ -541,14 +521,12 @@ def collect_hn(state: AgentState) -> dict:
                 "num_comments": hit.get("num_comments") or 0,
                 "url": hit.get("url") or f"https://news.ycombinator.com/item?id={obj_id}",
             })
-    except Exception:
-        pass
-    return {"hn_stories": stories}
+        return {"hn_stories": stories}
+    return get_breaker("hn").call(_fetch) or {"hn_stories": []}
 
 
 def collect_github(state: AgentState) -> dict:
-    items = []
-    try:
+    def _fetch():
         url = "https://api.github.com/search/issues?" + urllib.parse.urlencode({
             "q": state["query_plan"]["github_query"],
             "sort": "reactions",
@@ -560,8 +538,8 @@ def collect_github(state: AgentState) -> dict:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
-        for issue in data.get("items", []):
-            items.append({
+        return {"github_items": [
+            {
                 "issue_id": issue.get("number"),
                 "title": issue.get("title", ""),
                 "body": (issue.get("body") or "")[:300],
@@ -569,10 +547,10 @@ def collect_github(state: AgentState) -> dict:
                 "comments": issue.get("comments", 0),
                 "url": issue.get("html_url", ""),
                 "repo": issue.get("repository_url", "").split("/repos/", 1)[-1],
-            })
-    except Exception:
-        pass
-    return {"github_items": items}
+            }
+            for issue in data.get("items", [])
+        ]}
+    return get_breaker("github").call(_fetch) or {"github_items": []}
 
 
 def _queries_tried(state: AgentState) -> list[str]:
