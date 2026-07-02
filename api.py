@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -7,23 +8,42 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, Header, HTTPException, Request
+from pydantic import BaseModel, field_validator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from circuit_breaker import all_statuses
 from eval import run_eval
 from graph import graph
 from supabase_client import get_job, save_job, update_job
 
+_API_KEY = os.environ.get("API_KEY", "")
+_MAX_CONCURRENT_JOBS = 5
+_MAX_INPUT_LENGTH = 500
+
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+def _require_api_key(x_api_key: str = Header(...)):
+    if not _API_KEY or x_api_key != _API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 class ResearchRequest(BaseModel):
     audience: str
     question: str
 
+    @field_validator("audience", "question")
+    @classmethod
+    def truncate(cls, v: str) -> str:
+        return v[:_MAX_INPUT_LENGTH]
 
-# ponytail: mirrors main.py's initial state — keep in sync if AgentState fields change
+
 _BLANK_STATE: dict = {
     "query_plan": None,
     "reddit_posts": [],
@@ -46,11 +66,9 @@ _BLANK_STATE: dict = {
 
 
 async def _run_job(job_id: str, audience: str, question: str) -> None:
-    # ponytail: supabase calls are sync — wrap with asyncio.to_thread if concurrency becomes an issue
     start = time.monotonic()
     update_job(job_id, status="running")
     try:
-        # Call graph directly (not run_agent) so we keep final_state for eval
         final_state = await graph.ainvoke({
             "audience_description": audience,
             "research_question": question,
@@ -71,13 +89,12 @@ async def _run_job(job_id: str, audience: str, question: str) -> None:
             try:
                 eval_scores = run_eval(result, final_state)
             except Exception:
-                pass  # eval failure never blocks brief delivery
+                pass
             update_job(
                 job_id,
                 status="complete",
                 brief=result,
                 eval_scores=eval_scores,
-                # ponytail: run_cost is None until graph exposes token usage
                 run_time=elapsed,
             )
     except Exception as e:
@@ -96,7 +113,19 @@ async def health_collectors():
 
 
 @app.post("/research")
-async def create_research(body: ResearchRequest):
+@limiter.limit("5/minute")
+async def create_research(
+    request: Request,
+    body: ResearchRequest,
+    x_api_key: str = Header(...),
+):
+    _require_api_key(x_api_key)
+
+    # ponytail: Supabase count query — swap for Redis atomic counter if throughput demands it
+    from supabase_client import count_running_jobs
+    if count_running_jobs() >= _MAX_CONCURRENT_JOBS:
+        raise HTTPException(status_code=429, detail="Too many concurrent jobs. Try again shortly.")
+
     job_id = str(uuid4())
     save_job(job_id, body.audience, body.question)
     asyncio.create_task(_run_job(job_id, body.audience, body.question))
@@ -104,7 +133,12 @@ async def create_research(body: ResearchRequest):
 
 
 @app.get("/research/{job_id}")
-async def get_research(job_id: str):
+async def get_research(
+    job_id: str,
+    x_api_key: str = Header(...),
+):
+    _require_api_key(x_api_key)
+
     job = get_job(job_id)
     created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
     if job.get("completed_at"):

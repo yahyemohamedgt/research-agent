@@ -10,3 +10,4 @@ uvicorn[standard]
 supabase
 python-multipart
 openai
+slowapi

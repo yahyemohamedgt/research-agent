@@ -49,3 +49,8 @@ def update_job(
 
 def get_job(job_id: str) -> dict:
     return _db().table("research_jobs").select("*").eq("id", job_id).single().execute().data
+
+
+def count_running_jobs() -> int:
+    result = _db().table("research_jobs").select("id", count="exact").eq("status", "running").execute()
+    return result.count or 0
