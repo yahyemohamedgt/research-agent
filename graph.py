@@ -95,6 +95,20 @@ _SYNTHESIS_TOOL = {
                 "minItems": 5,
                 "maxItems": 5,
             },
+            "x_signals": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "url": {"type": "string"},
+                        "likes": {"type": "string"},
+                        "author": {"type": "string"},
+                    },
+                    "required": ["text", "url", "likes", "author"],
+                },
+                "maxItems": 5,
+            },
             "signal": {"type": "string", "enum": ["GREEN", "RED"]},
             "signal_reasoning": {"type": "string"},
             "decision_summary": {"type": "string"},
@@ -138,6 +152,7 @@ _SYNTHESIS_TOOL = {
         "required": [
             "dominant_emotion",
             "verbatim_phrases",
+            "x_signals",
             "signal",
             "signal_reasoning",
             "decision_summary",
@@ -701,7 +716,9 @@ dominant_emotion: single word only. Fear. Hope. Anger. Anxiety.
 
 audience_description: who is loud, where, and what demographic signal is visible. Two sentences max.
 
-verbatim_phrases: exactly 5. Must be verbatim — exact words from the corpus, not paraphrased. Include platform, engagement metric, and URL for each. Prioritize highest engagement.
+verbatim_phrases: exactly 5. Must be verbatim — exact words from the corpus, not paraphrased. Reddit, Exa/web, YouTube, TikTok, Instagram, Threads, HN, and GitHub only — never Twitter/X. Include platform, engagement metric, and URL for each. Prioritize highest engagement.
+
+x_signals: up to 5 practitioner signals from Twitter/X only. These are Grok-synthesized — a distilled summary of the post, not a verbatim quote. For each: the insight from the tweet (text), tweet URL, like count (likes), and author handle (author). If no Twitter data was collected, return an empty list.
 
 recommended_hook: write the actual hook. Copy-ready, under 15 words, first person or direct address. Not a description of a hook — the hook itself.
 

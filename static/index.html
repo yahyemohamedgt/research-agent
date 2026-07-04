@@ -190,6 +190,13 @@
     }).join('');
     parts.push(`<div class="section"><h2>Verbatim phrases</h2>${phrases || '<em>none</em>'}</div>`);
 
+    const xSignals = (brief.x_signals || []).map((s) =>
+      `<div class="phrase">${esc(s.text)}<div class="meta">@${esc(s.author)} · ${esc(s.likes)} likes · ${linkOrText(s.url)}</div></div>`
+    ).join('');
+    if (xSignals) {
+      parts.push(`<div class="section"><h2>Practitioner signal (X) <span style="font-weight:400;font-size:11px;color:#aaa">Grok-synthesized, not verbatim</span></h2>${xSignals}</div>`);
+    }
+
     parts.push(`
       <div class="section">
         <h2>Where to spend</h2>

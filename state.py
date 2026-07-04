@@ -26,6 +26,13 @@ class VerbatimPhrase(TypedDict):
     url: str
 
 
+class XSignal(TypedDict):
+    text: str
+    url: str
+    likes: str
+    author: str
+
+
 class PlatformBreakdown(TypedDict):
     platform: str
     volume: str
@@ -37,6 +44,7 @@ class PlatformBreakdown(TypedDict):
 class Brief(TypedDict):
     dominant_emotion: str
     verbatim_phrases: list[VerbatimPhrase]
+    x_signals: list[XSignal]
     signal: Literal["GREEN", "RED"]
     signal_reasoning: str
     decision_summary: str
