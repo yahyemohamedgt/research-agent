@@ -751,6 +751,10 @@ signal_reasoning: two sentences max. Why GREEN or RED. Cite a specific data poin
 cited_sources: platform, url, title, and one engagement metric per source you quote."""
 
 
+def _is_twitter_url(url: str) -> bool:
+    return "x.com/" in url or "twitter.com/" in url
+
+
 def synthesize(state: AgentState) -> dict:
     prompt = (
         f"Audience: {state['audience_description']}\n"
@@ -761,7 +765,26 @@ def synthesize(state: AgentState) -> dict:
         SystemMessage(content=_SYSTEM_PROMPT),
         HumanMessage(content=prompt),
     ])
-    return {"brief": response.tool_calls[0]["args"]}
+    brief = response.tool_calls[0]["args"]
+
+    # ponytail: Sonnet ignores platform restriction in verbatim_phrases — enforce in code.
+    # Move any Twitter/X entries from verbatim_phrases to x_signals (schema conversion: phrase→text).
+    twitter_spill = [p for p in brief.get("verbatim_phrases", []) if _is_twitter_url(p.get("url", ""))]
+    if twitter_spill:
+        brief["verbatim_phrases"] = [p for p in brief["verbatim_phrases"] if not _is_twitter_url(p.get("url", ""))]
+        existing = brief.get("x_signals") or []
+        seen_urls = {s.get("url") for s in existing}
+        for p in twitter_spill:
+            if p.get("url") not in seen_urls:
+                existing.append({
+                    "text": p.get("phrase", ""),
+                    "url": p.get("url", ""),
+                    "likes": p.get("engagement", ""),
+                    "author": "",
+                })
+        brief["x_signals"] = existing
+
+    return {"brief": brief}
 
 
 def _route(state: AgentState) -> str:
