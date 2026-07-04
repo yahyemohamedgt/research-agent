@@ -82,7 +82,16 @@ _SYNTHESIS_TOOL = {
             "dominant_emotion": {"type": "string"},
             "verbatim_phrases": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "phrase": {"type": "string"},
+                        "platform": {"type": "string"},
+                        "engagement": {"type": "string"},
+                        "url": {"type": "string"},
+                    },
+                    "required": ["phrase", "platform", "engagement", "url"],
+                },
                 "minItems": 5,
                 "maxItems": 5,
             },

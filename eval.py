@@ -53,7 +53,7 @@ def check_hallucinations(brief: dict, state: AgentState) -> list[dict]:
         else:
             quote = phrase
             platform = None
-        verdict = "VERIFIED" if quote.lower() in corpus else "NOT_FOUND"
+        verdict = "VERIFIED" if quote.strip() and quote.lower() in corpus else "NOT_FOUND"
         results.append({"quote": quote, "platform": platform, "verdict": verdict})
     return results
 

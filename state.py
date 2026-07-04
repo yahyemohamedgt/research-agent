@@ -19,6 +19,13 @@ class WinningAd(TypedDict):
     url: str
 
 
+class VerbatimPhrase(TypedDict):
+    phrase: str
+    platform: str
+    engagement: str
+    url: str
+
+
 class PlatformBreakdown(TypedDict):
     platform: str
     volume: str
@@ -29,7 +36,7 @@ class PlatformBreakdown(TypedDict):
 
 class Brief(TypedDict):
     dominant_emotion: str
-    verbatim_phrases: list[str]
+    verbatim_phrases: list[VerbatimPhrase]
     signal: Literal["GREEN", "RED"]
     signal_reasoning: str
     decision_summary: str
