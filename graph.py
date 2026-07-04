@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import urllib.parse
 import urllib.request
@@ -12,6 +13,19 @@ from langgraph.graph import END, StateGraph
 
 from circuit_breaker import get_breaker
 from state import AgentState
+
+_log = logging.getLogger(__name__)
+
+
+def _extract_json(text: str) -> dict:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return {}
+    try:
+        return json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        return {}
 
 _PLAN_TOOL = {
     "name": "query_plan",
@@ -400,7 +414,9 @@ def collect_twitter(state: AgentState) -> dict:
             for part in block.get("content", []):
                 if part.get("type") == "output_text":
                     output_text += part.get("text", "")
-        parsed = json.loads(output_text) if output_text.strip().startswith("{") else {}
+        parsed = _extract_json(output_text)
+        if not parsed:
+            _log.warning("collect_twitter: could not parse Grok output: %r", output_text[:500])
         return {"twitter_posts": [
             {
                 "text": item.get("text", ""),

@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -81,7 +82,12 @@ async def _run_job(job_id: str, audience: str, question: str) -> None:
             update_job(
                 job_id,
                 status="failed",
-                eval_scores={"failed_at": result["failed_at"], "reason": result.get("reason")},
+                eval_scores={
+                    "failed_at": result["failed_at"],
+                    "reason": result.get("reason"),
+                    "suggestion": result.get("suggestion"),
+                },
+                query_plan=final_state["query_plan"],
                 run_time=elapsed,
             )
         else:
@@ -95,6 +101,7 @@ async def _run_job(job_id: str, audience: str, question: str) -> None:
                 status="complete",
                 brief=result,
                 eval_scores=eval_scores,
+                query_plan=final_state["query_plan"],
                 run_time=elapsed,
             )
     except Exception as e:
@@ -149,5 +156,9 @@ async def get_research(
     return {
         "status": job["status"],
         "brief": job.get("brief"),
+        "eval_scores": job.get("eval_scores"),
         "elapsed_seconds": elapsed,
     }
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")

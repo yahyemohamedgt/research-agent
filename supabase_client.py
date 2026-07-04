@@ -30,6 +30,7 @@ def update_job(
     status: str,
     brief=None,
     eval_scores=None,
+    query_plan=None,
     run_cost=None,
     run_time=None,
 ) -> None:
@@ -38,6 +39,8 @@ def update_job(
         data["brief"] = brief
     if eval_scores is not None:
         data["eval_scores"] = eval_scores
+    if query_plan is not None:
+        data["query_plan"] = query_plan
     if run_cost is not None:
         data["run_cost"] = run_cost
     if run_time is not None:

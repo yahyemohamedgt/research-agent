@@ -5,6 +5,7 @@ CREATE TABLE research_jobs (
   status TEXT DEFAULT 'queued',
   brief JSONB,
   eval_scores JSONB,
+  query_plan JSONB,
   run_cost DECIMAL,
   run_time_seconds DECIMAL,
   created_at TIMESTAMPTZ DEFAULT NOW(),

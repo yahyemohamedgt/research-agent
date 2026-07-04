@@ -36,7 +36,7 @@ async def run_agent(audience: str, question: str) -> Brief | AgentError:
     return state["error"] if state["error"] else state["brief"]
 
 
-def print_brief(brief: dict) -> None:
+def print_brief(brief: dict, eval_scores: dict | None = None) -> None:
     divider = "━" * 50
 
     print(f"\n{divider}")
@@ -102,6 +102,19 @@ def print_brief(brief: dict) -> None:
     for s in brief.get('cited_sources') or []:
         print(f"  [{s.get('platform')}] {s.get('title', '')[:60]}")
         print(f"  {s.get('url')} · {s.get('engagement')}")
+
+    if eval_scores:
+        judge = eval_scores.get("judge_scores") or {}
+        print(f"\n{divider}")
+        print("QUALITY CHECK")
+        print(divider)
+        print(f"  Hallucinations: {eval_scores.get('hallucinations_found', 0)} flagged")
+        print(f"  Judge overall:  {judge.get('overall', '—')}/10 "
+              f"(specificity {judge.get('specificity', '—')}, evidence {judge.get('evidence', '—')}, "
+              f"actionability {judge.get('actionability', '—')}, hook {judge.get('hook_quality', '—')})")
+        print(f"  Eval passed:    {eval_scores.get('eval_passed')}")
+        for flag in judge.get("flags") or []:
+            print(f"  ⚠ {flag}")
 
     print(f"\n{divider}\n")
 

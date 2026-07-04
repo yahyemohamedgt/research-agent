@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Research Agent</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
+  h1 { font-size: 20px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 4px; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; }
+  textarea { min-height: 60px; resize: vertical; }
+  button { margin-top: 16px; padding: 10px 18px; font-size: 14px; font-weight: 600; border: none; border-radius: 6px; background: #1a1a1a; color: white; cursor: pointer; }
+  button:disabled { background: #999; cursor: not-allowed; }
+  #status { margin-top: 20px; font-size: 14px; color: #555; }
+  #result { margin-top: 20px; }
+  .section { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #eee; }
+  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; margin: 0 0 8px; }
+  .error-box { background: #fff3f3; border: 1px solid #f5c2c2; border-radius: 8px; padding: 16px; }
+  .error-box .reason { font-weight: 600; }
+  .phrase { margin-bottom: 10px; }
+  .phrase .meta { font-size: 12px; color: #888; }
+  .source { font-size: 13px; margin-bottom: 6px; }
+  .quality { font-size: 12px; color: #888; margin-top: 24px; }
+  .flag { color: #b45309; }
+</style>
+</head>
+<body>
+
+<h1>Research Agent</h1>
+
+<label for="apiKey">API key</label>
+<input id="apiKey" type="password" placeholder="paste your API key">
+
+<label for="audience">Audience</label>
+<textarea id="audience" placeholder="e.g. new parents struggling with sleep training"></textarea>
+
+<label for="question">Research question</label>
+<textarea id="question" placeholder="e.g. what's the biggest emotional pain point right now?"></textarea>
+
+<button id="submitBtn">Run research</button>
+
+<div id="status"></div>
+<div id="result"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str ?? '';
+    return d.innerHTML;
+  }
+
+  function safeUrl(url) {
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url;
+    return null;
+  }
+
+  function linkOrText(url, label) {
+    const href = safeUrl(url);
+    const text = esc(label || url || '');
+    return href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+  }
+
+  $('apiKey').value = localStorage.getItem('research_agent_api_key') || '';
+  $('apiKey').addEventListener('change', () => {
+    localStorage.setItem('research_agent_api_key', $('apiKey').value);
+  });
+
+  let pollTimer = null;
+  let pollCount = 0;
+  const MAX_POLLS = 80; // ~4 min at 3s interval
+
+  $('submitBtn').addEventListener('click', async () => {
+    const apiKey = $('apiKey').value.trim();
+    const audience = $('audience').value.trim();
+    const question = $('question').value.trim();
+
+    $('result').innerHTML = '';
+    if (!apiKey || !audience || !question) {
+      $('status').textContent = 'Fill in API key, audience, and question first.';
+      return;
+    }
+
+    $('submitBtn').disabled = true;
+    $('status').textContent = 'Queuing job...';
+    if (pollTimer) clearInterval(pollTimer);
+
+    try {
+      const resp = await fetch('/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ audience, question }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        $('status').textContent = `Request failed (${resp.status}): ${detail}`;
+        $('submitBtn').disabled = false;
+        return;
+      }
+      const { job_id } = await resp.json();
+      $('status').textContent = 'Running — this usually takes 30-90 seconds...';
+      pollCount = 0;
+      pollTimer = setInterval(() => poll(job_id, apiKey), 3000);
+    } catch (e) {
+      $('status').textContent = `Network error: ${esc(e.message)}`;
+      $('submitBtn').disabled = false;
+    }
+  });
+
+  async function poll(jobId, apiKey) {
+    pollCount++;
+    if (pollCount > MAX_POLLS) {
+      clearInterval(pollTimer);
+      $('status').textContent = 'Still running after 4 minutes — check back later or try a narrower question.';
+      $('submitBtn').disabled = false;
+      return;
+    }
+    try {
+      const resp = await fetch(`/research/${jobId}`, { headers: { 'X-API-Key': apiKey } });
+      if (!resp.ok) return; // transient — keep polling
+      const data = await resp.json();
+
+      if (data.status === 'queued' || data.status === 'running') {
+        return;
+      }
+
+      clearInterval(pollTimer);
+      $('submitBtn').disabled = false;
+
+      if (data.status === 'failed') {
+        renderFailure(data.eval_scores);
+      } else if (data.status === 'complete') {
+        renderBrief(data.brief, data.eval_scores);
+      } else {
+        $('status').textContent = `Unexpected status: ${esc(data.status)}`;
+      }
+    } catch (e) {
+      // transient network hiccup — keep polling silently
+    }
+  }
+
+  function renderFailure(evalScores) {
+    const reason = evalScores?.reason;
+    const suggestion = evalScores?.suggestion;
+    $('status').textContent = '';
+    if (reason) {
+      $('result').innerHTML = `
+        <div class="error-box">
+          <div class="reason">This query didn't return a usable result.</div>
+          <div>${esc(reason)}</div>
+          ${suggestion ? `<div style="margin-top:8px;"><strong>Try:</strong> ${esc(suggestion)}</div>` : ''}
+        </div>`;
+    } else {
+      $('result').innerHTML = `
+        <div class="error-box">
+          <div class="reason">Something went wrong running this job.</div>
+          <div>No further detail was returned — try again, and if it keeps failing this is worth a look under the hood.</div>
+        </div>`;
+    }
+  }
+
+  function renderBrief(brief, evalScores) {
+    if (!brief) {
+      renderFailure(evalScores);
+      return;
+    }
+    $('status').textContent = '';
+    const parts = [];
+
+    parts.push(`
+      <div class="section">
+        <h2>Signal</h2>
+        <div><strong>${esc(brief.signal)}</strong> — ${esc(brief.signal_reasoning)}</div>
+        <div>Emotion: ${esc(brief.dominant_emotion)} · Urgency: ${esc(brief.urgency)}</div>
+      </div>`);
+
+    parts.push(`
+      <div class="section">
+        <h2>Creative ammunition</h2>
+        <div><strong>Hook:</strong> ${esc(brief.recommended_hook)}</div>
+        <div><strong>Angle:</strong> ${esc(brief.recommended_angle)}</div>
+      </div>`);
+
+    const phrases = (brief.verbatim_phrases || []).map((p) => {
+      if (typeof p === 'object' && p !== null) {
+        return `<div class="phrase">"${esc(p.phrase)}"<div class="meta">${esc(p.platform)} · ${esc(p.engagement)} · ${linkOrText(p.url)}</div></div>`;
+      }
+      return `<div class="phrase">"${esc(p)}"</div>`;
+    }).join('');
+    parts.push(`<div class="section"><h2>Verbatim phrases</h2>${phrases || '<em>none</em>'}</div>`);
+
+    parts.push(`
+      <div class="section">
+        <h2>Where to spend</h2>
+        <div>Best platform: <strong>${esc(brief.best_platform)}</strong></div>
+        <div>Paid competition: ${esc(brief.paid_competition)}</div>
+        <div>Paid gap: ${esc(brief.paid_gap)}</div>
+      </div>`);
+
+    const ads = (brief.winning_ads || []).map((ad) =>
+      `<div class="source">· ${esc(ad.brand)} — ${esc(ad.days_running)} days<br>Hook: ${esc(ad.hook_text)}<br>Emotion: ${esc(ad.emotional_driver)}</div>`
+    ).join('');
+    parts.push(`<div class="section"><h2>Winning ads</h2>${ads || '<em>None found — first mover opportunity</em>'}</div>`);
+
+    const platforms = (brief.platform_breakdown || []).map((p) =>
+      `<div class="source">${esc(p.platform)} — ${esc(p.signal_quality)} — ${esc(p.volume)} · ${esc((p.top_content || '').slice(0, 80))}</div>`
+    ).join('');
+    parts.push(`<div class="section"><h2>Platform breakdown</h2>${platforms || '<em>none</em>'}</div>`);
+
+    parts.push(`<div class="section"><h2>Content gap</h2>${esc(brief.content_gap)}</div>`);
+
+    const followups = (brief.suggested_followup || []).map((q) => `<div>→ ${esc(q)}</div>`).join('');
+    parts.push(`<div class="section"><h2>Follow-up research</h2>${followups || '<em>none</em>'}</div>`);
+
+    const sources = (brief.cited_sources || []).map((s) =>
+      `<div class="source">[${esc(s.platform)}] ${linkOrText(s.url, s.title)} · ${esc(s.engagement)}</div>`
+    ).join('');
+    parts.push(`<div class="section"><h2>Sources</h2>${sources || '<em>none</em>'}</div>`);
+
+    if (evalScores && evalScores.judge_scores) {
+      const j = evalScores.judge_scores;
+      const flags = (j.flags || []).map((f) => `<div class="flag">⚠ ${esc(f)}</div>`).join('');
+      parts.push(`
+        <div class="quality">
+          Quality check — hallucinations: ${esc(evalScores.hallucinations_found ?? '—')},
+          judge overall: ${esc(j.overall ?? '—')}/10
+          (specificity ${esc(j.specificity ?? '—')}, evidence ${esc(j.evidence ?? '—')},
+          actionability ${esc(j.actionability ?? '—')}, hook ${esc(j.hook_quality ?? '—')})
+          ${flags}
+        </div>`);
+    }
+
+    $('result').innerHTML = parts.join('');
+  }
+</script>
+
+</body>
+</html>
