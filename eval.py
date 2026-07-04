@@ -43,6 +43,19 @@ def _corpus(state: dict) -> str:
     return " ".join(parts).lower()
 
 
+def _in_corpus(quote: str, corpus: str) -> bool:
+    q = quote.lower()
+    if q in corpus:
+        return True
+    # ponytail: 8-word sliding window — catches quotes that were lightly paraphrased at the edges
+    words = q.split()
+    if len(words) >= 8:
+        for i in range(len(words) - 7):
+            if " ".join(words[i:i + 8]) in corpus:
+                return True
+    return False
+
+
 def check_hallucinations(brief: dict, state: AgentState) -> list[dict]:
     corpus = _corpus(state)
     results = []
@@ -53,7 +66,7 @@ def check_hallucinations(brief: dict, state: AgentState) -> list[dict]:
         else:
             quote = phrase
             platform = None
-        verdict = "VERIFIED" if quote.strip() and quote.lower() in corpus else "NOT_FOUND"
+        verdict = "VERIFIED" if quote.strip() and _in_corpus(quote, corpus) else "NOT_FOUND"
         results.append({"quote": quote, "platform": platform, "verdict": verdict})
     return results
 

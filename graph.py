@@ -386,6 +386,7 @@ def collect_foreplay(state: AgentState) -> dict:
                 "url": ad.get("link_url") or ad.get("foreplay_url"),
             }
             for ad in items
+            if ad.get("headline") or ad.get("description")
         ]}
     return get_breaker("foreplay").call(_fetch) or {"foreplay_ads": []}
 
@@ -402,7 +403,8 @@ def collect_twitter(state: AgentState) -> dict:
                 "role": "user",
                 "content": (
                     f"Search X for posts about: {state['query_plan']['twitter_query']}\n"
-                    f"Return JSON only: {{\"items\": [{{\"text\": \"...\", \"url\": \"...\", "
+                    f"Return the exact verbatim text of each post — do not summarize or paraphrase. "
+                    f"Return JSON only: {{\"items\": [{{\"text\": \"exact post text verbatim\", \"url\": \"...\", "
                     f"\"like_count\": 0, \"retweet_count\": 0}}]}}"
                 ),
             }],
