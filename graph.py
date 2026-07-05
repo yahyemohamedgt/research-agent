@@ -310,6 +310,7 @@ def collect_reddit(state: AgentState) -> dict:
                 "url": url,
                 "score": post.get("score") or post.get("votes") or post.get("ups") or 0,
                 "subreddit": sub,
+                "author": post.get("author", ""),
                 "comments": [],
             })
         return {"reddit_posts": posts}
@@ -450,7 +451,7 @@ def collect_twitter(state: AgentState) -> dict:
                     f"Search X for posts about: {state['query_plan']['twitter_query']}\n"
                     f"Return the exact verbatim text of each post — do not summarize or paraphrase. "
                     f"Return JSON only: {{\"items\": [{{\"text\": \"exact post text verbatim\", \"url\": \"...\", "
-                    f"\"like_count\": 0, \"retweet_count\": 0}}]}}"
+                    f"\"author\": \"@handle\", \"like_count\": 0, \"retweet_count\": 0}}]}}"
                 ),
             }],
         }).encode()
@@ -477,6 +478,7 @@ def collect_twitter(state: AgentState) -> dict:
             {
                 "text": item.get("text", ""),
                 "url": item.get("url", ""),
+                "author": item.get("author", ""),
                 "like_count": item.get("like_count") or (item.get("engagement") or {}).get("likes") or 0,
                 "retweet_count": item.get("retweet_count") or (item.get("engagement") or {}).get("reposts") or 0,
             }
@@ -507,6 +509,7 @@ def collect_tiktok(state: AgentState) -> dict:
                 "description": item.get("desc", ""),
                 "play_count": stats.get("play_count", 0),
                 "like_count": stats.get("digg_count", 0),
+                "author": handle,
                 "url": url,
             })
         return {"tiktok_videos": videos}
@@ -525,6 +528,8 @@ def collect_instagram(state: AgentState) -> dict:
         )
         posts = []
         for raw in raw_items[:15]:
+            if raw.get("is_ad") or raw.get("is_paid_partnership"):
+                continue
             caption = raw.get("caption", "")
             if isinstance(caption, dict):
                 caption = caption.get("text", "")
@@ -537,6 +542,7 @@ def collect_instagram(state: AgentState) -> dict:
                     raw.get("video_play_count") or raw.get("video_view_count")
                     or raw.get("play_count") or 0
                 ),
+                "author": (raw.get("owner") or {}).get("username", ""),
                 "url": raw.get("url") or (
                     f"https://www.instagram.com/reel/{shortcode}" if shortcode else ""
                 ),
@@ -565,6 +571,7 @@ def collect_threads(state: AgentState) -> dict:
                 "post_id": str(raw.get("id") or raw.get("pk") or raw.get("code", "")),
                 "text": text,
                 "like_count": raw.get("like_count") or raw.get("likes") or 0,
+                "author": (raw.get("user") or {}).get("username", ""),
                 "url": raw.get("url") or raw.get("share_url") or (
                     f"https://www.threads.net/t/{code}" if code else ""
                 ),
@@ -591,6 +598,7 @@ def collect_hn(state: AgentState) -> dict:
                 "text": (hit.get("story_text") or "")[:300],
                 "points": hit.get("points") or 0,
                 "num_comments": hit.get("num_comments") or 0,
+                "author": hit.get("author", ""),
                 "url": hit.get("url") or f"https://news.ycombinator.com/item?id={obj_id}",
             })
         return {"hn_stories": stories}
@@ -617,6 +625,9 @@ def collect_github(state: AgentState) -> dict:
                 "body": (issue.get("body") or "")[:300],
                 "reactions": (issue.get("reactions") or {}).get("total_count", 0),
                 "comments": issue.get("comments", 0),
+                "author": (issue.get("user") or {}).get("login", ""),
+                "labels": [label.get("name", "") for label in issue.get("labels", [])],
+                "state": issue.get("state", ""),
                 "url": issue.get("html_url", ""),
                 "repo": issue.get("repository_url", "").split("/repos/", 1)[-1],
             }
@@ -713,7 +724,7 @@ def _full_corpus(state: AgentState) -> str:
     parts = []
     for p in state["reddit_posts"]:
         comments = " | ".join((c.get("body") or '')[:100] for c in p.get("comments", []))
-        parts.append(f"[Reddit r/{p.get('subreddit','')}] {p.get('title','')} — {(p.get('selftext') or '')[:300]}\nComments: {comments}")
+        parts.append(f"[Reddit r/{p.get('subreddit','')} by u/{p.get('author','')}] {p.get('title','')} — {(p.get('selftext') or '')[:300]}\nComments: {comments}")
     for r in state["exa_results"]:
         parts.append(f"[Web: {r.get('url','')}] {r.get('title','')} — {' | '.join(r.get('highlights') or [])}")
     for v in state["youtube_videos"]:
@@ -726,17 +737,22 @@ def _full_corpus(state: AgentState) -> str:
             f"format: {ad.get('ad_format') or ''} | cta: {ad.get('cta_type') or ''}"
         )
     for p in state["twitter_posts"]:
-        parts.append(f"[Twitter: {p.get('url') or ''}] {p.get('text') or ''} (likes: {p.get('like_count',0)})")
+        parts.append(f"[Twitter: {p.get('url') or ''}] @{p.get('author') or ''}: {p.get('text') or ''} (likes: {p.get('like_count',0)})")
     for v in state["tiktok_videos"]:
-        parts.append(f"[TikTok: {v.get('url') or ''}] {v.get('description') or ''} (plays: {v.get('play_count',0)})")
+        parts.append(f"[TikTok: {v.get('url') or ''}] @{v.get('author') or ''}: {v.get('description') or ''} (plays: {v.get('play_count',0)})")
     for p in state["instagram_posts"]:
-        parts.append(f"[Instagram: {p.get('url') or ''}] {(p.get('caption') or '')[:300]} (views: {p.get('view_count',0)})")
+        parts.append(f"[Instagram: {p.get('url') or ''}] @{p.get('author') or ''}: {(p.get('caption') or '')[:300]} (views: {p.get('view_count',0)})")
     for p in state["threads_posts"]:
-        parts.append(f"[Threads: {p.get('url') or ''}] {(p.get('text') or '')[:300]} (likes: {p.get('like_count',0)})")
+        parts.append(f"[Threads: {p.get('url') or ''}] @{p.get('author') or ''}: {(p.get('text') or '')[:300]} (likes: {p.get('like_count',0)})")
     for s in state["hn_stories"]:
-        parts.append(f"[HN: {s.get('url') or ''}] {s.get('title') or ''} (points: {s.get('points',0)}) — {(s.get('text') or '')[:300]}")
+        parts.append(f"[HN: {s.get('url') or ''}] by {s.get('author') or ''} (points: {s.get('points',0)}) — {s.get('title') or ''} — {(s.get('text') or '')[:300]}")
     for item in state["github_items"]:
-        parts.append(f"[GitHub: {item.get('url') or ''}] {item.get('repo') or ''} #{item.get('issue_id','')} {item.get('title') or ''} — {(item.get('body') or '')[:300]}")
+        labels = ", ".join(item.get("labels") or [])
+        parts.append(
+            f"[GitHub: {item.get('url') or ''}] {item.get('repo') or ''} #{item.get('issue_id','')} "
+            f"by {item.get('author') or ''} [{item.get('state') or ''}] [{labels}] "
+            f"{item.get('title') or ''} — {(item.get('body') or '')[:300]}"
+        )
     return "\n\n".join(parts)
 
 
@@ -805,6 +821,7 @@ def synthesize(state: AgentState) -> dict:
     # Move any Twitter/X entries from verbatim_phrases to x_signals (schema conversion: phrase→text).
     twitter_spill = [p for p in brief.get("verbatim_phrases", []) if _is_twitter_url(p.get("url", ""))]
     if twitter_spill:
+        author_by_url = {p.get("url"): p.get("author", "") for p in state["twitter_posts"]}
         brief["verbatim_phrases"] = [p for p in brief["verbatim_phrases"] if not _is_twitter_url(p.get("url", ""))]
         existing = brief.get("x_signals") or []
         seen_urls = {s.get("url") for s in existing}
@@ -814,7 +831,7 @@ def synthesize(state: AgentState) -> dict:
                     "text": p.get("phrase", ""),
                     "url": p.get("url", ""),
                     "likes": p.get("engagement", ""),
-                    "author": "",
+                    "author": author_by_url.get(p.get("url"), ""),
                 })
         brief["x_signals"] = existing
 
