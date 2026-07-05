@@ -4,24 +4,56 @@
 <meta charset="utf-8">
 <title>Research Agent</title>
 <style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
-  h1 { font-size: 20px; }
+  :root { --accent: #6d28d9; --accent-light: #8b5cf6; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    padding: 40px 16px;
+    background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 50%, #0ea5e9 100%);
+  }
+  .card {
+    max-width: 720px;
+    margin: 0 auto;
+    background: #ffffff;
+    color: #1a1a1a;
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; color: var(--accent); }
+  .tagline { font-size: 13px; color: #888; margin-bottom: 8px; }
   label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 4px; }
-  .hint { font-size: 12px; color: #888; margin-bottom: 4px; }
-  input, textarea { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; }
+  .hint { font-size: 12px; color: #777; margin-bottom: 4px; line-height: 1.4; }
+  input, textarea {
+    width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px;
+    border: 1px solid #ccc; border-radius: 6px; font-family: inherit;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent-light); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
   textarea { min-height: 60px; resize: vertical; }
-  .examples { margin-top: 16px; }
-  .examples h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; margin: 0 0 8px; }
-  .example-btn { display: block; width: 100%; text-align: left; background: #f7f7f7; border: 1px solid #e5e5e5; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; font-size: 13px; }
-  .example-btn:hover { background: #eee; }
-  .example-btn .aud { font-weight: 600; }
-  .example-btn .q { color: #555; }
-  button { margin-top: 16px; padding: 10px 18px; font-size: 14px; font-weight: 600; border: none; border-radius: 6px; background: #1a1a1a; color: white; cursor: pointer; }
-  button:disabled { background: #999; cursor: not-allowed; }
+  .examples { margin-top: 20px; }
+  .examples h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; margin: 0 0 10px; }
+  .example-btn {
+    display: block; width: 100%; text-align: left;
+    background: #faf9ff; border: 1px solid #e5e0f5; border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 8px; cursor: pointer;
+    font-size: 13px; font-family: inherit;
+  }
+  .example-btn:hover { background: #f1edfe; border-color: var(--accent-light); }
+  .example-btn .aud { font-weight: 700; color: #1a1a1a; margin-bottom: 3px; }
+  .example-btn .q { color: #444; line-height: 1.4; }
+  button {
+    margin-top: 16px; padding: 10px 18px; font-size: 14px; font-weight: 600;
+    border: none; border-radius: 6px; color: white; cursor: pointer;
+    background: var(--accent);
+  }
+  button:hover { background: var(--accent-light); }
+  button:disabled { background: #bbb; cursor: not-allowed; }
   #status { margin-top: 20px; font-size: 14px; color: #555; }
   #result { margin-top: 20px; }
   .section { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #eee; }
-  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; margin: 0 0 8px; }
+  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); margin: 0 0 8px; }
   .error-box { background: #fff3f3; border: 1px solid #f5c2c2; border-radius: 8px; padding: 16px; }
   .error-box .reason { font-weight: 600; }
   .phrase { margin-bottom: 10px; }
@@ -32,8 +64,10 @@
 </style>
 </head>
 <body>
+<div class="card">
 
 <h1>Research Agent</h1>
+<div class="tagline">Audience + research question in, community signal and a creative brief out.</div>
 
 <label for="apiKey">API key</label>
 <input id="apiKey" type="password" placeholder="paste your API key">
@@ -66,6 +100,7 @@
 
 <div id="status"></div>
 <div id="result"></div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
