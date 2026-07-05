@@ -20,7 +20,7 @@ from eval import run_eval
 from graph import graph
 from supabase_client import get_job, save_job, update_job
 
-_API_KEY = os.environ.get("API_KEY", "")
+_API_KEYS = {k.strip() for k in os.environ.get("API_KEY", "").split(",") if k.strip()}
 _MAX_CONCURRENT_JOBS = 5
 _MAX_INPUT_LENGTH = 500
 
@@ -31,7 +31,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def _require_api_key(x_api_key: str = Header(...)):
-    if not _API_KEY or x_api_key != _API_KEY:
+    if not _API_KEYS or x_api_key not in _API_KEYS:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
