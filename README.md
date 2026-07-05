@@ -1,19 +1,36 @@
 # Research Agent
 
-A LangGraph agent that takes an audience description and research question, collects organic signal across 10 platforms, and returns a structured creative brief for media buyers.
+A LangGraph agent that takes an audience description and a research question, collects organic and paid signal across 10 platforms, and returns a structured creative brief telling a media buyer whether the community confirms the premise, what language they use, and what the paid-ad landscape looks like.
 
-**Status: v2 complete — production API with persistence and eval**
+**Status: v2 — production API with persistence, eval, and multi-key auth.**
 
 ## What it does
 
-Given an audience (e.g. "working class parents in the US") and a research question (e.g. "Are they worried AI will affect their children's job prospects?"), the agent:
+Give it an audience (e.g. "new parents doing sleep training") and a research question (e.g. "are they anxious about doing it wrong?"), and it:
 
-1. **Plans** — generates platform-specific search queries tailored to the audience
-2. **Collects** — pulls signal from 10 sources in parallel, each protected by a circuit breaker
-3. **Gates** — rejects low-volume or off-topic corpora and retries with broader queries
-4. **Synthesizes** — produces a structured brief with hooks, angles, verbatim phrases, and media buying signals
-5. **Evaluates** — runs a hallucination check against the raw corpus and a GPT-4o-mini quality judge
-6. **Persists** — stores every brief, eval scores, and run metadata in Supabase
+1. **Plans** — generates platform-specific search queries tailored to that exact audience, preferring identity-specific communities over broad topic ones (r/MuslimLounge, not r/religion)
+2. **Collects** — pulls signal from 10 sources in parallel (Reddit, Exa, YouTube, Foreplay, Twitter/X, TikTok, Instagram, Threads, HN, GitHub), each isolated behind its own circuit breaker
+3. **Gates** — rejects runs with too little data or off-topic data, and retries with meaningfully broader queries (up to 2 retries) before giving up
+4. **Synthesizes** — produces a structured brief: dominant emotion, a GREEN/RED signal verdict with reasoning, verbatim community phrases, a copy-ready hook, paid competition and paid gap, platform breakdown, content gap, and cited sources
+5. **Evaluates** — checks every verbatim phrase against the raw corpus for hallucinations, and has a second model (GPT-4o-mini) independently score the brief on specificity, evidence, actionability, and hook quality
+6. **Persists** — stores the brief, eval scores, query plan, and run time in Supabase, queryable by job ID
+
+The output is meant to be read once, in ninety seconds, and acted on — not interpreted like a dashboard.
+
+## Why this one
+
+Right now, "does this audience actually feel this way" gets answered one of three ways: scroll Reddit and TikTok by hand for a few hours and hope you caught the real conversation, guess off gut feel and ship the ad anyway, or pay for a research deck that lands two weeks after the trend already peaked. All three cost you the thing that decides whether a campaign wins — being first with the right hook, in the audience's own words.
+
+This agent gives you a decisive answer — GREEN or RED, not a paragraph you have to interpret — in about a minute, pulled from ten platforms at once instead of the two or three a person can realistically check by hand. And it doesn't stop at the community: Foreplay's ad data means the same brief also tells you who's already running paid on that angle and where the gap still is. You're not just informed, you're positioned to move before the angle is crowded.
+
+The one thing every AI research tool risks is confidently making things up. This one doesn't get the benefit of the doubt: every verbatim quote it hands you is checked against the raw data it actually collected, and a second, independent model grades the brief before it ever reaches you. If it can't back a claim with a real source, it doesn't get to keep it.
+
+## What's next
+
+- **Corpus persistence.** Right now the raw collector output (all 10 platforms, pre-synthesis) isn't saved anywhere — auditing a hallucination flag weeks later means re-running the query. Next step is a `corpus` JSONB column on `research_jobs`.
+- **Real user management.** Multi-key auth (comma-separated `API_KEY`) works for sharing with a handful of people; it doesn't scale past that. A proper keys table (issue/revoke per person, usage tracking) is the natural next step if this grows past friends-and-family.
+- **A delivery path beyond the web UI.** `run_agent` was deliberately designed as a pure `Brief | AgentError` function so any caller — CLI, API, a WhatsApp bot — handles it identically ([ADR 0007](docs/adr/0007-agent-error-as-structured-return.md)). The web UI is the first caller; a chat-delivered brief (so it lands where a media buyer actually reads messages) is the logical next one.
+- **Atomic concurrency control.** The 5-concurrent-job cap currently reads a count from Supabase, which races under real concurrent load — fine at today's traffic, a known ceiling if usage grows (marked `ponytail:` in `api.py`).
 
 ## Platforms
 
@@ -32,11 +49,11 @@ Given an audience (e.g. "working class parents in the US") and a research questi
 
 ## Web UI
 
-A single-page frontend is served at `/` (`static/index.html`) — enter your API key (saved to browser `localStorage`, never shipped in the page itself), an audience, and a research question, and it polls the job until it completes or fails.
+A single-page frontend is served at `/` (`static/index.html`) — enter your API key (saved to browser `localStorage`, never shipped in the page itself), an audience, and a research question, and it polls the job until it completes or fails. Inline hints and three clickable examples show what a well-formed audience/question pair looks like.
 
 ## API
 
-All endpoints except `/health` require an `X-API-Key` header matching the `API_KEY` env var. `POST /research` is rate-limited to 5 requests/minute per IP and capped at 5 concurrent running jobs.
+All endpoints except `/health` require an `X-API-Key` header matching one of the comma-separated keys in the `API_KEY` env var. `POST /research` is rate-limited to 5 requests/minute per IP and capped at 5 concurrent running jobs.
 
 ```bash
 # Start the server
@@ -63,17 +80,6 @@ GET /health/collectors
 → {"collectors": [{"name": "reddit", "state": "CLOSED", "failures": 0}, ...]}
 ```
 
-## New in v2
-
-- **FastAPI async API** — `POST /research`, `GET /research/:id`, fire-and-forget background jobs
-- **Supabase persistence** — every brief, eval scores, query plan, cost, and run time stored per job
-- **Eval layer** — pure-Python hallucination check against the raw corpus + GPT-4o-mini judge scoring specificity, evidence, actionability, and hook quality
-- **Circuit breakers** — all 10 collectors protected; OPEN after 3 failures, auto-recovery after 10 min
-- **GET /health/collectors** — real-time circuit breaker state for all collectors
-- **OpenAI API** — GPT-4o-mini for cross-model eval (Sonnet synthesizes, GPT-4o-mini judges)
-- **API key auth + rate limiting** — `X-API-Key` header required, 5 req/min per IP, 5 concurrent job cap
-- **Web UI** — static single-page frontend at `/`, no build step
-
 ## CLI (v1)
 
 ```bash
@@ -94,25 +100,11 @@ Run `schema.sql` in your Supabase SQL editor to create the `research_jobs` table
 
 ## Deploy
 
-Configured for Railway — no Dockerfile needed, Nixpacks auto-detects the Python app. `Procfile` sets the start command (`uvicorn api:app --host 0.0.0.0 --port $PORT`). Set all env vars above in the Railway service, then deploy from this repo.
+Configured for Railway — no Dockerfile needed, Nixpacks auto-detects the Python app. `Procfile` sets the start command (`uvicorn api:app --host 0.0.0.0 --port $PORT`). Set all env vars below in the Railway service, then deploy from this repo (GitHub-connected, auto-deploys on push to `main`).
 
 ## Environment variables
 
-```
-ANTHROPIC_API_KEY=
-SCRAPECREATORS_API_KEY=
-XAI_API_KEY=
-EXA_API_KEY=
-YOUTUBE_API_KEY=
-FOREPLAY_API_KEY=
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-OPENAI_API_KEY=
-API_KEY=                    # required — protects /research endpoints
-LANGCHAIN_API_KEY=          # optional, for LangSmith tracing
-LANGCHAIN_TRACING_V2=true   # optional
-LANGCHAIN_PROJECT=research-agent
-```
+See `.env.example` for the full list and comments on what each key is for. `API_KEY` accepts a comma-separated list — one or more keys are all valid.
 
 ## Stack
 
