@@ -31,6 +31,9 @@ The one thing every AI research tool risks is confidently making things up. This
 - **Real user management.** Multi-key auth (comma-separated `API_KEY`) works for sharing with a handful of people; it doesn't scale past that. A proper keys table (issue/revoke per person, usage tracking) is the natural next step if this grows past friends-and-family.
 - **A delivery path beyond the web UI.** `run_agent` was deliberately designed as a pure `Brief | AgentError` function so any caller — CLI, API, a WhatsApp bot — handles it identically ([ADR 0007](docs/adr/0007-agent-error-as-structured-return.md)). The web UI is the first caller; a chat-delivered brief (so it lands where a media buyer actually reads messages) is the logical next one.
 - **Atomic concurrency control.** The 5-concurrent-job cap currently reads a count from Supabase, which races under real concurrent load — fine at today's traffic, a known ceiling if usage grows (marked `ponytail:` in `api.py`).
+- **Reddit comments are dead code.** `collect_reddit` hardcodes `"comments": []` — it's never populated, yet `_full_corpus` references `p.get("comments", [])` as if it were real data. Reddit comment-level context (arguably the richest part of Reddit) is entirely absent today.
+- **TikTok hashtags and engagement breakdown.** `text_extra` (hashtags) and `statistics.comment_count`/`share_count` are available in the raw ScrapeCreators response and currently dropped — only `digg_count`/`play_count` are captured.
+- **YouTube Data API daily quota.** The free tier's 10,000 units/day (~100 units per search call) exhausts fast under repeated testing — when it does, `collect_youtube` degrades gracefully (logged, breaker stays closed, YouTube just drops out of the brief) rather than failing the run, but it's worth knowing if YouTube signal looks thin.
 
 ## Platforms
 
