@@ -140,13 +140,35 @@ _SYNTHESIS_TOOL = {
             },
             "winning_ads": {
                 "type": "array",
-                "items": {"type": "object"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "brand": {"type": "string"},
+                        "hook_text": {"type": "string"},
+                        "emotional_driver": {"type": "string"},
+                        "days_running": {"type": "string"},
+                        "ad_format": {"type": ["string", "null"]},
+                        "cta_type": {"type": ["string", "null"]},
+                        "url": {"type": "string"},
+                    },
+                    "required": ["brand", "hook_text", "emotional_driver", "days_running", "url"],
+                },
             },
             "paid_competition": {"type": "string"},
             "paid_gap": {"type": "string"},
             "platform_breakdown": {
                 "type": "array",
-                "items": {"type": "object"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "platform": {"type": "string"},
+                        "volume": {"type": "string"},
+                        "top_content": {"type": "string"},
+                        "engagement": {"type": "string"},
+                        "signal_quality": {"type": "string"},
+                    },
+                    "required": ["platform", "volume", "top_content", "engagement", "signal_quality"],
+                },
             },
         },
         "required": [
@@ -403,6 +425,8 @@ def collect_foreplay(state: AgentState) -> dict:
                 "hook_text": ad.get("headline") or ad.get("description"),
                 "emotional_driver": max(ad["emotional_drivers"], key=ad["emotional_drivers"].get) if ad.get("emotional_drivers") else None,
                 "days_running": (ad.get("running_duration") or {}).get("days"),
+                "ad_format": ad.get("display_format"),
+                "cta_type": ad.get("cta_type"),
                 "brand": ad.get("name"),
                 "url": ad.get("link_url") or ad.get("foreplay_url"),
             }
@@ -696,7 +720,11 @@ def _full_corpus(state: AgentState) -> str:
         transcript = (v.get("transcript") or v.get("description") or "")[:500]
         parts.append(f"[YouTube: {v.get('url','')}] {v.get('title','')} (views: {v.get('view_count',0)}) — {transcript}")
     for ad in state["foreplay_ads"]:
-        parts.append(f"[Ad ({ad.get('brand') or ''}): {ad.get('url') or ''}] hook: {ad.get('hook_text') or ''} | driver: {ad.get('emotional_driver') or ''} | {ad.get('days_running') or ''} days running")
+        parts.append(
+            f"[Ad ({ad.get('brand') or ''}): {ad.get('url') or ''}] hook: {ad.get('hook_text') or ''} | "
+            f"driver: {ad.get('emotional_driver') or ''} | {ad.get('days_running') or ''} days running | "
+            f"format: {ad.get('ad_format') or ''} | cta: {ad.get('cta_type') or ''}"
+        )
     for p in state["twitter_posts"]:
         parts.append(f"[Twitter: {p.get('url') or ''}] {p.get('text') or ''} (likes: {p.get('like_count',0)})")
     for v in state["tiktok_videos"]:
@@ -732,7 +760,7 @@ recommended_angle: one sentence. The creative direction. Emotion arc + anchor + 
 
 winning_ad_angle: the single strongest angle to test. One sentence.
 
-winning_ads: top 3 from Foreplay data only. If Foreplay returned no results write empty list.
+winning_ads: top 3 from Foreplay data only, using the exact values already present in the collected Ad entries — do not invent your own structure. For each: brand (exact name), hook_text (the ad's exact headline/description), emotional_driver, days_running (number only), ad_format (video/image/carousel — null if not present), cta_type (the ad's call-to-action — null if not present), and url. If Foreplay returned no results write empty list.
 
 paid_competition: HIGH if 5+ brands running similar angles. MEDIUM if 2-4. LOW if 1. NONE if zero. Be specific.
 

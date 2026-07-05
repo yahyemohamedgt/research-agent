@@ -16,6 +16,8 @@ class WinningAd(TypedDict):
     hook_text: str
     emotional_driver: str
     days_running: int
+    ad_format: str
+    cta_type: str
     url: str
 
 

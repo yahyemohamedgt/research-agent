@@ -75,6 +75,9 @@ def print_brief(brief: dict, eval_scores: dict | None = None) -> None:
             print(f"  · {ad.get('brand')} — {ad.get('days_running')} days")
             print(f"    Hook: {ad.get('hook_text')}")
             print(f"    Emotion: {ad.get('emotional_driver')}")
+            fmt = " · ".join(filter(None, [ad.get('ad_format'), ad.get('cta_type')]))
+            if fmt:
+                print(f"    Format: {fmt}")
     else:
         print("\nWinning ads: None found — first mover opportunity")
 

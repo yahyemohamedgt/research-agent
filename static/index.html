@@ -272,9 +272,10 @@
         <div>Paid gap: ${esc(brief.paid_gap)}</div>
       </div>`);
 
-    const ads = (brief.winning_ads || []).map((ad) =>
-      `<div class="source">· ${esc(ad.brand)} — ${esc(ad.days_running)} days<br>Hook: ${esc(ad.hook_text)}<br>Emotion: ${esc(ad.emotional_driver)}</div>`
-    ).join('');
+    const ads = (brief.winning_ads || []).map((ad) => {
+      const format = [ad.ad_format, ad.cta_type].filter(Boolean).join(' · ');
+      return `<div class="source">· ${esc(ad.brand)} — ${esc(ad.days_running)} days<br>Hook: ${esc(ad.hook_text)}<br>Emotion: ${esc(ad.emotional_driver)}${format ? `<br>Format: ${esc(format)}` : ''}</div>`;
+    }).join('');
     parts.push(`<div class="section"><h2>Winning ads</h2>${ads || '<em>None found — first mover opportunity</em>'}</div>`);
 
     const platforms = (brief.platform_breakdown || []).map((p) =>
