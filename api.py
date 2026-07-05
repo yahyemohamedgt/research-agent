@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -19,6 +20,8 @@ from circuit_breaker import all_statuses
 from eval import run_eval
 from graph import graph
 from supabase_client import get_job, save_job, update_job
+
+_log = logging.getLogger(__name__)
 
 _API_KEYS = {k.strip() for k in os.environ.get("API_KEY", "").split(",") if k.strip()}
 _MAX_CONCURRENT_JOBS = 5
@@ -95,7 +98,7 @@ async def _run_job(job_id: str, audience: str, question: str) -> None:
             try:
                 eval_scores = run_eval(result, final_state)
             except Exception:
-                pass
+                _log.exception("run_eval failed for job %s", job_id)
             update_job(
                 job_id,
                 status="complete",
@@ -105,6 +108,7 @@ async def _run_job(job_id: str, audience: str, question: str) -> None:
                 run_time=elapsed,
             )
     except Exception as e:
+        _log.exception("job %s crashed", job_id)
         elapsed = round(time.monotonic() - start, 2)
         update_job(job_id, status="failed", eval_scores={"error": str(e)}, run_time=elapsed)
 

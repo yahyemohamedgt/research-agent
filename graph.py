@@ -265,7 +265,8 @@ def collect_reddit(state: AgentState) -> dict:
             try:
                 r = _sc_get(f"{_SC_REDDIT}/subreddit/search", {"subreddit": sub, "query": query, "sort": "relevance"})
                 candidates.extend(r.get("posts") or r.get("data") or [])
-            except Exception:
+            except Exception as exc:
+                _log.warning("collect_reddit: subreddit search failed for r/%s: %r", sub, exc)
                 continue
         for post in candidates:
             post_id = str(post.get("id", ""))
@@ -328,7 +329,8 @@ def _fetch_transcript(video_id: str) -> str | None:
             if seg.get("utf8", "").strip() not in ("", "\n")
         ]
         return " ".join(parts) or None
-    except Exception:
+    except Exception as exc:
+        _log.warning("_fetch_transcript failed for video %s: %r", video_id, exc)
         return None
 
 
@@ -350,7 +352,8 @@ def collect_youtube(state: AgentState) -> dict:
                             "title": item["snippet"]["title"],
                             "description": item["snippet"]["description"],
                         })
-            except Exception:
+            except Exception as exc:
+                _log.warning("collect_youtube: search failed for term %r: %r", term, exc)
                 continue
         if not candidates:
             return {"youtube_videos": []}
