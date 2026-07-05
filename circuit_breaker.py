@@ -1,4 +1,7 @@
+import logging
 import time
+
+_log = logging.getLogger(__name__)
 
 
 class CircuitBreaker:
@@ -29,7 +32,8 @@ class CircuitBreaker:
             result = fn(*args, **kwargs)
             self._on_success()
             return result
-        except Exception:
+        except Exception as exc:
+            _log.warning("circuit breaker %r call failed: %r", self.name, exc)
             self._on_failure()
             return []
 
