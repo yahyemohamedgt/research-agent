@@ -817,6 +817,15 @@ def synthesize(state: AgentState) -> dict:
     ])
     brief = response.tool_calls[0]["args"]
 
+    # ponytail: Sonnet sometimes cites Foreplay ad copy as an organic verbatim phrase
+    # (it's real text, so it "verifies" against the corpus — but it's paid, not organic).
+    # Enforce the organic-only rule in code, same pattern as the Twitter/X split below.
+    foreplay_urls = {ad.get("url") for ad in state["foreplay_ads"] if ad.get("url")}
+    brief["verbatim_phrases"] = [
+        p for p in brief.get("verbatim_phrases", [])
+        if p.get("url") not in foreplay_urls
+    ]
+
     # ponytail: Sonnet ignores platform restriction in verbatim_phrases — enforce in code.
     # Move any Twitter/X entries from verbatim_phrases to x_signals (schema conversion: phrase→text).
     twitter_spill = [p for p in brief.get("verbatim_phrases", []) if _is_twitter_url(p.get("url", ""))]
