@@ -43,7 +43,7 @@ _PLAN_TOOL = {
             "youtube_terms": {"type": "array", "items": {"type": "string"}},
             "foreplay_query": {
                 "type": "string",
-                "description": "Same topic as reddit query but one level broader — wider vertical, broader audience framing",
+                "description": "A concrete product or category name Foreplay can match against real running ads — e.g. 'collagen supplement', 'skincare serum', 'invoicing software'. Not a marketing-strategy sentence or audience description — Foreplay searches ad creative content, not commentary about marketing.",
             },
             "twitter_query": {"type": "string"},
             "tiktok_query": {"type": "string"},
@@ -214,12 +214,15 @@ def plan(state: AgentState) -> dict:
         f"Research question: {question}\n\n"
         f"Generate queries for all 10 platforms: 3-5 subreddits (no r/ prefix), "
         f"a Reddit search query, an Exa semantic query, 2-4 YouTube search terms, "
-        f"a Foreplay ad discovery query one level broader than the Reddit query, "
         f"a Twitter/X query, a TikTok query, an Instagram query, a Threads query, "
         f"a Hacker News query, and a GitHub query. "
         f"Set broadening_note to null.\n\n"
         f"For subreddits: always prioritize identity-specific and community-specific "
         f"subreddits over broad topic subreddits.\n\n"
+        f"For the Foreplay query: name the actual product or category being advertised "
+        f"(e.g. 'collagen supplement', 'invoicing software'), not a sentence about "
+        f"marketing strategy or audience framing — Foreplay searches ad creative content, "
+        f"not commentary about ads.\n\n"
         f"Rule: if the audience has a specific identity (religion, ethnicity, profession, "
         f"life stage), find the subreddit where that community talks to each other — not "
         f"the subreddit where outsiders talk about the topic.\n\n"
