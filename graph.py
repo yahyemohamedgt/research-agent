@@ -199,6 +199,35 @@ _plan_llm = ChatAnthropic(model="claude-haiku-4-5-20251001").bind_tools(
     [_PLAN_TOOL], tool_choice={"type": "tool", "name": "query_plan"}
 )
 
+_SPLIT_TOOL = {
+    "name": "split_topic",
+    "description": "Split a free-text research topic into an audience description and a research question.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "audience_description": {
+                "type": "string",
+                "description": "Who the research is about — a specific identity or community, not a broad demographic.",
+            },
+            "research_question": {
+                "type": "string",
+                "description": "One decisive question the collected posts should confirm or kill — not a general topic.",
+            },
+        },
+        "required": ["audience_description", "research_question"],
+    },
+}
+
+_split_llm = ChatAnthropic(model="claude-haiku-4-5-20251001").bind_tools(
+    [_SPLIT_TOOL], tool_choice={"type": "tool", "name": "split_topic"}
+)
+
+
+def split_topic(topic: str) -> tuple[str, str]:
+    response = _split_llm.invoke([HumanMessage(content=topic)])
+    args = response.tool_calls[0]["args"]
+    return args["audience_description"], args["research_question"]
+
 _sonnet = ChatAnthropic(model="claude-sonnet-4-6")
 _synthesis_llm = _sonnet.bind_tools(
     [_SYNTHESIS_TOOL], tool_choice={"type": "tool", "name": "brief"}

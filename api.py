@@ -18,7 +18,7 @@ from slowapi.util import get_remote_address
 
 from circuit_breaker import all_statuses
 from eval import run_eval
-from graph import graph
+from graph import graph, split_topic
 from supabase_client import get_job, save_job, update_job
 
 _log = logging.getLogger(__name__)
@@ -39,13 +39,21 @@ def _require_api_key(x_api_key: str = Header(...)):
 
 
 class ResearchRequest(BaseModel):
-    audience: str
-    question: str
+    audience: str | None = None
+    question: str | None = None
+    topic: str | None = None
 
-    @field_validator("audience", "question")
+    @field_validator("audience", "question", "topic")
     @classmethod
-    def truncate(cls, v: str) -> str:
-        return v[:_MAX_INPUT_LENGTH]
+    def truncate(cls, v: str | None) -> str | None:
+        return v[:_MAX_INPUT_LENGTH] if v else v
+
+    def resolve(self) -> tuple[str, str]:
+        if self.topic:
+            return split_topic(self.topic)
+        if self.audience and self.question:
+            return self.audience, self.question
+        raise ValueError("Provide either 'topic', or both 'audience' and 'question'.")
 
 
 _BLANK_STATE: dict = {
@@ -132,14 +140,19 @@ async def create_research(
 ):
     _require_api_key(x_api_key)
 
+    try:
+        audience, question = body.resolve()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # ponytail: Supabase count query — swap for Redis atomic counter if throughput demands it
     from supabase_client import count_running_jobs
     if count_running_jobs() >= _MAX_CONCURRENT_JOBS:
         raise HTTPException(status_code=429, detail="Too many concurrent jobs. Try again shortly.")
 
     job_id = str(uuid4())
-    save_job(job_id, body.audience, body.question)
-    asyncio.create_task(_run_job(job_id, body.audience, body.question))
+    save_job(job_id, audience, question)
+    asyncio.create_task(_run_job(job_id, audience, question))
     return {"job_id": job_id, "status": "queued"}
 
 

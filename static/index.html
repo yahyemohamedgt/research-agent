@@ -72,6 +72,10 @@
 <label for="apiKey">API key</label>
 <input id="apiKey" type="password" placeholder="paste your API key">
 
+<label for="topic">Or just describe what you want to know</label>
+<div class="hint">One messy sentence is fine — e.g. "are new parents doing sleep training anxious about doing it wrong". Leave this blank to fill in Audience and Research question separately below instead.</div>
+<textarea id="topic" placeholder="e.g. are new parents doing sleep training anxious about doing it wrong"></textarea>
+
 <label for="audience">Audience</label>
 <div class="hint">Name a specific identity or community, not a broad demographic — the agent searches for where that group already talks to each other (e.g. "new parents doing sleep training" beats "parents").</div>
 <textarea id="audience" placeholder="e.g. new parents struggling with sleep training"></textarea>
@@ -124,6 +128,7 @@
 
   document.querySelectorAll('.example-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
+      $('topic').value = '';
       $('audience').value = btn.dataset.audience;
       $('question').value = btn.dataset.question;
     });
@@ -140,12 +145,13 @@
 
   $('submitBtn').addEventListener('click', async () => {
     const apiKey = $('apiKey').value.trim();
+    const topic = $('topic').value.trim();
     const audience = $('audience').value.trim();
     const question = $('question').value.trim();
 
     $('result').innerHTML = '';
-    if (!apiKey || !audience || !question) {
-      $('status').textContent = 'Fill in API key, audience, and question first.';
+    if (!apiKey || (!topic && (!audience || !question))) {
+      $('status').textContent = 'Fill in API key, then either the quick description or both Audience and Research question.';
       return;
     }
 
@@ -157,7 +163,7 @@
       const resp = await fetch('/research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-        body: JSON.stringify({ audience, question }),
+        body: JSON.stringify(topic ? { topic } : { audience, question }),
       });
       if (!resp.ok) {
         const detail = await resp.text();
