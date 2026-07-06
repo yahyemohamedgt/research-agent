@@ -4,11 +4,13 @@ Tells you whether a specific group of people actually feels a certain way about 
 
 ## Why this one
 
-Right now, "does this audience actually feel this way" gets answered one of three ways: scroll Reddit and TikTok by hand for a few hours and hope you caught the real conversation, guess off gut feel and ship the ad anyway, or pay for a research deck that lands two weeks after the trend already peaked. All three cost you the thing that decides whether a campaign wins — being first with the right hook, in the audience's own words.
+Right now, "does this audience actually feel this way" gets answered one of three ways: scroll Reddit and TikTok by hand for a few hours and hope you caught the real conversation, guess off gut feel and find out three weeks and one ad account into a losing angle, or pay for a research deck that lands two weeks after the trend already peaked. All three cost you the thing that decides whether a campaign wins — being first with the right hook, in the audience's own words.
 
 This agent gives you a decisive answer — GREEN or RED, not a paragraph you have to interpret — in about a minute, pulled from ten platforms at once instead of the two or three a person can realistically check by hand. And it doesn't stop at the community: Foreplay's ad data means the same brief also tells you who's already running paid on that angle and where the gap still is. You're not just informed, you're positioned to move before the angle is crowded.
 
 The one thing every AI research tool risks is confidently making things up. This one doesn't get the benefit of the doubt: every verbatim quote it hands you is checked against the raw data it actually collected, and a second, independent model grades the brief before it ever reaches you. If it can't back a claim with a real source, it doesn't get to keep it.
+
+One thing worth being explicit about: this doesn't touch your ad account. It doesn't launch campaigns, optimize bids, or manage budget — that's a different, increasingly crowded category of AI agent wired directly into Meta and Google Ads APIs, replacing execution work end to end. This agent answers the question upstream of all of that: whether the angle is worth running before you point one of those agents at your ad account. The stacks doing the execution still need someone, or something, to tell them what the winning angle even is — that's the piece nobody's automated yet, and it's the one this agent does.
 
 ## Who else this is for
 
@@ -133,9 +135,8 @@ The LangGraph graph itself ends at `synthesize`. Eval (hallucination check + jud
 - **Real user management.** Multi-key auth (comma-separated `API_KEY`) works for sharing with a handful of people; it doesn't scale past that. A proper keys table (issue/revoke per person, usage tracking) is the natural next step if this grows past friends-and-family.
 - **A delivery path beyond the web UI.** `run_agent` was deliberately designed as a pure `Brief | AgentError` function so any caller — CLI, API, a WhatsApp bot — handles it identically ([ADR 0007](docs/adr/0007-agent-error-as-structured-return.md)). The web UI is the first caller; a chat-delivered brief (so it lands where a media buyer actually reads messages) is the logical next one.
 - **Atomic concurrency control.** The 5-concurrent-job cap currently reads a count from Supabase, which races under real concurrent load — fine at today's traffic, a known ceiling if usage grows (marked `ponytail:` in `api.py`).
-- **Reddit comments are dead code.** `collect_reddit` hardcodes `"comments": []` — it's never populated, yet `_full_corpus` references `p.get("comments", [])` as if it were real data. Reddit comment-level context (arguably the richest part of Reddit) is entirely absent today.
-- **TikTok hashtags and engagement breakdown.** `text_extra` (hashtags) and `statistics.comment_count`/`share_count` are available in the raw ScrapeCreators response and currently dropped — only `digg_count`/`play_count` are captured.
 - **YouTube Data API daily quota.** The free tier's 10,000 units/day (~100 units per search call) exhausts fast under repeated testing — when it does, `collect_youtube` degrades gracefully (logged, breaker stays closed, YouTube just drops out of the brief) rather than failing the run, but it's worth knowing if YouTube signal looks thin.
+- **Test coverage is thin.** `test_extract_json.py` covers one small helper; none of the eval layer, quality gate, or collector parsing has automated coverage. Fine for a solo-maintained pipeline this size today, a real gap if this gets more contributors.
 
 ---
 

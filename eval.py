@@ -15,7 +15,7 @@ def _get_judge() -> OpenAI:
     return _judge
 
 
-def _corpus(state: dict) -> str:
+def _corpus(state: AgentState) -> str:
     parts = []
     for p in state.get("reddit_posts", []):
         parts += [p.get("title") or "", p.get("selftext") or ""]
