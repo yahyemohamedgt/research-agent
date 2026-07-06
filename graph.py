@@ -310,6 +310,18 @@ def plan(state: AgentState) -> dict:
 _SC_REDDIT = "https://api.scrapecreators.com/v1/reddit"
 
 
+def _fetch_reddit_comments(post_url: str, limit: int = 5) -> list[dict]:
+    try:
+        data = _sc_get(f"{_SC_REDDIT}/post/comments", {"url": post_url})
+        return [
+            {"author": c.get("author", ""), "body": c.get("body", ""), "score": c.get("score", 0)}
+            for c in (data.get("comments") or [])[:limit]
+        ]
+    except Exception as exc:
+        _log.warning("collect_reddit: comment fetch failed for %s: %r", post_url, exc)
+        return []
+
+
 def collect_reddit(state: AgentState) -> dict:
     def _fetch():
         plan = state["query_plan"]
@@ -347,6 +359,11 @@ def collect_reddit(state: AgentState) -> dict:
                 "author": post.get("author", ""),
                 "comments": [],
             })
+        # ponytail: sequential, matches the enrichment pattern already used for
+        # YouTube transcripts — only the top few posts are worth the extra call.
+        for p in sorted(posts, key=lambda p: p["score"], reverse=True)[:3]:
+            if p["url"]:
+                p["comments"] = _fetch_reddit_comments(p["url"])
         return {"reddit_posts": posts}
     return get_breaker("reddit").call(_fetch) or {"reddit_posts": []}
 
@@ -364,6 +381,7 @@ def collect_exa(state: AgentState) -> dict:
                 "title": r.title,
                 "highlights": r.highlights or [],
                 "published_date": r.published_date,
+                "author": r.author or "",
             }
             for r in response.results
         ]}
@@ -411,6 +429,7 @@ def collect_youtube(state: AgentState) -> dict:
                             "video_id": vid_id,
                             "title": item["snippet"]["title"],
                             "description": item["snippet"]["description"],
+                            "channel": item["snippet"].get("channelTitle", ""),
                         })
             except Exception as exc:
                 _log.warning("collect_youtube: search failed for term %r: %r", term, exc)
@@ -419,19 +438,27 @@ def collect_youtube(state: AgentState) -> dict:
             return {"youtube_videos": []}
         ids_str = ",".join(c["video_id"] for c in candidates)
         stats = _youtube.videos().list(part="statistics", id=ids_str).execute()
-        view_counts = {
-            item["id"]: int(item["statistics"].get("viewCount", 0))
+        stats_by_id = {
+            item["id"]: {
+                "view_count": int(item["statistics"].get("viewCount", 0)),
+                "like_count": int(item["statistics"].get("likeCount", 0)),
+                "comment_count": int(item["statistics"].get("commentCount", 0)),
+            }
             for item in stats.get("items", [])
         }
-        candidates.sort(key=lambda c: view_counts.get(c["video_id"], 0), reverse=True)
+        candidates.sort(key=lambda c: stats_by_id.get(c["video_id"], {}).get("view_count", 0), reverse=True)
         videos = []
         for i, c in enumerate(candidates[:10]):
             vid_id = c["video_id"]
+            vid_stats = stats_by_id.get(vid_id, {})
             videos.append({
                 "video_id": vid_id,
                 "title": c["title"],
                 "url": f"https://www.youtube.com/watch?v={vid_id}",
-                "view_count": view_counts.get(vid_id, 0),
+                "channel": c["channel"],
+                "view_count": vid_stats.get("view_count", 0),
+                "like_count": vid_stats.get("like_count", 0),
+                "comment_count": vid_stats.get("comment_count", 0),
                 "description": c["description"],
                 "transcript": _fetch_transcript(vid_id) if i < 3 else None,
             })
@@ -562,11 +589,15 @@ def collect_tiktok(state: AgentState) -> dict:
             url = share_url.split("?")[0] if share_url else (
                 f"https://www.tiktok.com/@{handle}/video/{video_id}" if handle and video_id else ""
             )
+            hashtags = [t.get("hashtag_name", "") for t in (item.get("text_extra") or []) if t.get("hashtag_name")]
             videos.append({
                 "video_id": video_id,
                 "description": item.get("desc", ""),
                 "play_count": stats.get("play_count", 0),
                 "like_count": stats.get("digg_count", 0),
+                "comment_count": stats.get("comment_count", 0),
+                "share_count": stats.get("share_count", 0),
+                "hashtags": ", ".join(hashtags),
                 "author": handle,
                 "url": url,
             })
@@ -600,6 +631,7 @@ def collect_instagram(state: AgentState) -> dict:
                     raw.get("video_play_count") or raw.get("video_view_count")
                     or raw.get("play_count") or 0
                 ),
+                "comment_count": raw.get("comment_count") or 0,
                 "author": (raw.get("owner") or {}).get("username", ""),
                 "url": raw.get("url") or (
                     f"https://www.instagram.com/reel/{shortcode}" if shortcode else ""
@@ -781,13 +813,16 @@ def quality_gate(state: AgentState) -> dict:
 def _full_corpus(state: AgentState) -> str:
     parts = []
     for p in state["reddit_posts"]:
-        comments = " | ".join((c.get("body") or '')[:100] for c in p.get("comments", []))
+        comments = " | ".join(f"u/{c.get('author','')} ({c.get('score',0)} pts): {(c.get('body') or '')[:150]}" for c in p.get("comments", []))
         parts.append(f"[Reddit r/{p.get('subreddit','')} by u/{p.get('author','')}] {p.get('title','')} — {(p.get('selftext') or '')[:300]}\nComments: {comments}")
     for r in state["exa_results"]:
-        parts.append(f"[Web: {r.get('url','')}] {r.get('title','')} — {' | '.join(r.get('highlights') or [])}")
+        parts.append(f"[Web: {r.get('url','')}] {r.get('title','')} by {r.get('author') or ''} — {' | '.join(r.get('highlights') or [])}")
     for v in state["youtube_videos"]:
         transcript = (v.get("transcript") or v.get("description") or "")[:500]
-        parts.append(f"[YouTube: {v.get('url','')}] {v.get('title','')} (views: {v.get('view_count',0)}) — {transcript}")
+        parts.append(
+            f"[YouTube: {v.get('url','')}] {v.get('title','')} by {v.get('channel','')} "
+            f"(views: {v.get('view_count',0)}, likes: {v.get('like_count',0)}, comments: {v.get('comment_count',0)}) — {transcript}"
+        )
     for ad in state["foreplay_ads"]:
         parts.append(
             f"[Ad ({ad.get('brand') or ''}): {ad.get('url') or ''}] hook: {ad.get('hook_text') or ''} | "
@@ -800,9 +835,16 @@ def _full_corpus(state: AgentState) -> str:
     for p in state["twitter_posts"]:
         parts.append(f"[Twitter: {p.get('url') or ''}] @{p.get('author') or ''}: {p.get('text') or ''} (likes: {p.get('like_count',0)})")
     for v in state["tiktok_videos"]:
-        parts.append(f"[TikTok: {v.get('url') or ''}] @{v.get('author') or ''}: {v.get('description') or ''} (plays: {v.get('play_count',0)})")
+        parts.append(
+            f"[TikTok: {v.get('url') or ''}] @{v.get('author') or ''}: {v.get('description') or ''} "
+            f"(plays: {v.get('play_count',0)}, likes: {v.get('like_count',0)}, comments: {v.get('comment_count',0)}, "
+            f"shares: {v.get('share_count',0)}) hashtags: {v.get('hashtags') or ''}"
+        )
     for p in state["instagram_posts"]:
-        parts.append(f"[Instagram: {p.get('url') or ''}] @{p.get('author') or ''}: {(p.get('caption') or '')[:300]} (views: {p.get('view_count',0)})")
+        parts.append(
+            f"[Instagram: {p.get('url') or ''}] @{p.get('author') or ''}: {(p.get('caption') or '')[:300]} "
+            f"(views: {p.get('view_count',0)}, likes: {p.get('like_count',0)}, comments: {p.get('comment_count',0)})"
+        )
     for p in state["threads_posts"]:
         parts.append(f"[Threads: {p.get('url') or ''}] @{p.get('author') or ''}: {(p.get('text') or '')[:300]} (likes: {p.get('like_count',0)})")
     for s in state["hn_stories"]:
