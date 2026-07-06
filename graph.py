@@ -653,6 +653,8 @@ def collect_threads(state: AgentState) -> dict:
         )
         posts = []
         for raw in raw_items[:15]:
+            if raw.get("is_ad") or raw.get("is_paid_partnership"):
+                continue
             text = raw.get("text") or raw.get("caption") or raw.get("content") or ""
             if isinstance(text, dict):
                 text = text.get("text", "")
@@ -695,6 +697,16 @@ def collect_hn(state: AgentState) -> dict:
     return get_breaker("hn").call(_fetch) or {"hn_stories": []}
 
 
+_GITHUB_REACTION_KEYS = ["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"]
+
+
+def _github_dominant_reaction(reactions: dict) -> str:
+    counts = {k: reactions.get(k, 0) for k in _GITHUB_REACTION_KEYS}
+    if not any(counts.values()):
+        return ""
+    return max(counts, key=counts.get)
+
+
 def collect_github(state: AgentState) -> dict:
     def _fetch():
         url = "https://api.github.com/search/issues?" + urllib.parse.urlencode({
@@ -714,6 +726,7 @@ def collect_github(state: AgentState) -> dict:
                 "title": issue.get("title", ""),
                 "body": (issue.get("body") or "")[:300],
                 "reactions": (issue.get("reactions") or {}).get("total_count", 0),
+                "dominant_reaction": _github_dominant_reaction(issue.get("reactions") or {}),
                 "comments": issue.get("comments", 0),
                 "author": (issue.get("user") or {}).get("login", ""),
                 "labels": [label.get("name", "") for label in issue.get("labels", [])],
@@ -854,6 +867,7 @@ def _full_corpus(state: AgentState) -> str:
         parts.append(
             f"[GitHub: {item.get('url') or ''}] {item.get('repo') or ''} #{item.get('issue_id','')} "
             f"by {item.get('author') or ''} [{item.get('state') or ''}] [{labels}] "
+            f"reactions: {item.get('reactions', 0)} (dominant: {item.get('dominant_reaction') or 'none'}) "
             f"{item.get('title') or ''} — {(item.get('body') or '')[:300]}"
         )
     return "\n\n".join(parts)
