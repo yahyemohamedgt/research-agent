@@ -32,6 +32,19 @@
   }
   input:focus, textarea:focus { outline: none; border-color: var(--accent-light); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
   textarea { min-height: 60px; resize: vertical; }
+  .sample-preview { margin: 16px 0; border: 1px solid #e5e0f5; border-radius: 8px; background: #faf9ff; }
+  .sample-preview summary { padding: 10px 14px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); }
+  .sample-preview summary:hover { color: var(--accent-light); }
+  .sample-content { padding: 0 14px 14px; font-size: 13px; line-height: 1.5; }
+  .sample-content div { margin-bottom: 6px; }
+  .divider { text-align: center; font-size: 12px; color: #999; margin: 20px 0; text-transform: uppercase; letter-spacing: 0.04em; }
+  #customize { margin-top: 4px; }
+  #customize summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); padding: 8px 0; }
+  #customize summary:hover { color: var(--accent-light); }
+  .key-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+  .key-row input { flex: 1; }
+  .key-saved { font-size: 13px; color: #555; margin-top: 16px; }
+  .key-saved a { color: var(--accent); cursor: pointer; }
   .examples { margin-top: 20px; }
   .examples h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; margin: 0 0 10px; }
   .example-btn {
@@ -70,25 +83,18 @@
 <h1>Research Agent</h1>
 <div class="tagline">Audience + research question in, community signal and a creative brief out.</div>
 
-<label for="apiKey">API key</label>
-<input id="apiKey" type="password" placeholder="paste your API key">
-
-<label for="topic">Or just describe what you want to know</label>
-<div class="hint">One messy sentence is fine — e.g. "are new parents doing sleep training anxious about doing it wrong". Leave this blank to fill in Audience and Research question separately below instead.</div>
-<textarea id="topic" placeholder="e.g. are new parents doing sleep training anxious about doing it wrong"></textarea>
-
-<label for="audience">Audience</label>
-<div class="hint">Name a specific identity or community, not a broad demographic — the agent searches for where that group already talks to each other (e.g. "new parents doing sleep training" beats "parents").</div>
-<textarea id="audience" placeholder="e.g. new parents struggling with sleep training"></textarea>
-
-<label for="question">Research question</label>
-<div class="hint">Phrase it as a specific claim the collected posts can prove true or false — the agent reports GREEN if the community confirms it, RED if it doesn't. A broad topic can't be confirmed or killed, so it can't get a signal (e.g. "are they anxious about being judged for going back to work after leave?" works; "thoughts on parenting" doesn't).</div>
-<textarea id="question" placeholder="e.g. what's the biggest emotional pain point right now?"></textarea>
-
-<button id="submitBtn">Run research</button>
+<details class="sample-preview">
+  <summary>See what you get →</summary>
+  <div class="sample-content">
+    <div><strong>Signal:</strong> GREEN — Anxiety</div>
+    <div>"Community signal is loud, consistent, and on-topic: TikTok ingredient content is clearing 400K–1.5M plays organically, and Jolie's narrative-scaffold ads on Meta delivered 3.8% CTR against a 1.4% category benchmark..."</div>
+    <div><strong>Hook:</strong> "I hated my skin for ten years. Here's the one thing that actually changed it."</div>
+    <div><strong>Verbatim:</strong> "I hated my skin for ten years" — Web (D2C Times / Jolie Skin Co.), 6.2s average hold time vs 3.1s category benchmark</div>
+  </div>
+</details>
 
 <div class="examples">
-  <h2>Or try an example</h2>
+  <h2>Try an example</h2>
   <button type="button" class="example-btn" data-audience="new parents doing sleep training with their first baby" data-question="Are they anxious about doing it &quot;wrong&quot; and are they blaming themselves when it doesn't work?">
     <div class="aud">New parents doing sleep training</div>
     <div class="q">Are they anxious about doing it "wrong," blaming themselves when it fails?</div>
@@ -102,6 +108,30 @@
     <div class="q">What's the biggest complaint about scheduling software right now?</div>
   </button>
 </div>
+
+<div class="divider">or describe your own</div>
+
+<label for="topic">What do you want to know?</label>
+<div class="hint">One messy sentence is fine — e.g. "are new parents doing sleep training anxious about doing it wrong".</div>
+<textarea id="topic" placeholder="e.g. are new parents doing sleep training anxious about doing it wrong"></textarea>
+
+<details id="customize">
+  <summary>Customize audience + question separately</summary>
+  <label for="audience">Audience</label>
+  <div class="hint">Name a specific identity or community, not a broad demographic — the agent searches for where that group already talks to each other (e.g. "new parents doing sleep training" beats "parents").</div>
+  <textarea id="audience" placeholder="e.g. new parents struggling with sleep training"></textarea>
+
+  <label for="question">Research question</label>
+  <div class="hint">Phrase it as a specific claim the collected posts can prove true or false — the agent reports GREEN if the community confirms it, RED if it doesn't. A broad topic can't be confirmed or killed, so it can't get a signal (e.g. "are they anxious about being judged for going back to work after leave?" works; "thoughts on parenting" doesn't).</div>
+  <textarea id="question" placeholder="e.g. what's the biggest emotional pain point right now?"></textarea>
+</details>
+
+<div id="apiKeyPrompt" class="key-row" style="display:none">
+  <input id="apiKey" type="password" placeholder="paste your API key to run this">
+</div>
+<div id="apiKeySaved" class="key-saved" style="display:none">API key saved ✓ <a id="changeKeyLink">change</a></div>
+
+<button id="submitBtn">Run research</button>
 
 <div id="status"></div>
 <div id="result"></div>
@@ -132,12 +162,27 @@
       $('topic').value = '';
       $('audience').value = btn.dataset.audience;
       $('question').value = btn.dataset.question;
+      $('customize').open = true;
     });
   });
 
-  $('apiKey').value = localStorage.getItem('research_agent_api_key') || '';
+  function showKeyState() {
+    const saved = localStorage.getItem('research_agent_api_key') || '';
+    $('apiKey').value = saved;
+    $('apiKeyPrompt').style.display = saved ? 'none' : 'flex';
+    $('apiKeySaved').style.display = saved ? 'block' : 'none';
+  }
+  showKeyState();
+
   $('apiKey').addEventListener('change', () => {
     localStorage.setItem('research_agent_api_key', $('apiKey').value);
+    showKeyState();
+  });
+
+  $('changeKeyLink').addEventListener('click', () => {
+    $('apiKeyPrompt').style.display = 'flex';
+    $('apiKeySaved').style.display = 'none';
+    $('apiKey').focus();
   });
 
   let pollTimer = null;
