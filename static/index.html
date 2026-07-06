@@ -59,6 +59,7 @@
   .phrase { margin-bottom: 10px; }
   .phrase .meta { font-size: 12px; color: #888; }
   .source { font-size: 13px; margin-bottom: 6px; }
+  .ad-detail { font-size: 12px; color: #888; margin-top: 2px; }
   .quality { font-size: 12px; color: #888; margin-top: 24px; }
   .flag { color: #b45309; }
 </style>
@@ -280,7 +281,14 @@
 
     const ads = (brief.winning_ads || []).map((ad) => {
       const format = [ad.ad_format, ad.cta_type].filter(Boolean).join(' · ');
-      return `<div class="source">· ${esc(ad.brand)} — ${esc(ad.days_running)} days<br>Hook: ${esc(ad.hook_text)}<br>Emotion: ${esc(ad.emotional_driver)}${format ? `<br>Format: ${esc(format)}` : ''}</div>`;
+      const detail = [
+        ad.persona ? `targets ${ad.persona}` : null,
+        ad.publisher_platform ? `on ${ad.publisher_platform}` : null,
+        ad.product_category || null,
+        ad.video_duration ? `${ad.video_duration} video` : null,
+        ad.time_to_product_mention ? `product named at ${ad.time_to_product_mention}` : null,
+      ].filter(Boolean).join(' · ');
+      return `<div class="source">· ${esc(ad.brand)} — ${esc(ad.days_running)} days<br>Hook: ${esc(ad.hook_text)}<br>Emotion: ${esc(ad.emotional_driver)}${format ? `<br>Format: ${esc(format)}` : ''}${detail ? `<div class="ad-detail">${esc(detail)}</div>` : ''}</div>`;
     }).join('');
     parts.push(`<div class="section"><h2>Winning ads</h2>${ads || '<em>None found — first mover opportunity</em>'}</div>`);
 

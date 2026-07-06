@@ -78,6 +78,15 @@ def print_brief(brief: dict, eval_scores: dict | None = None) -> None:
             fmt = " · ".join(filter(None, [ad.get('ad_format'), ad.get('cta_type')]))
             if fmt:
                 print(f"    Format: {fmt}")
+            detail = " · ".join(filter(None, [
+                f"targets {ad['persona']}" if ad.get('persona') else None,
+                f"on {ad['publisher_platform']}" if ad.get('publisher_platform') else None,
+                ad.get('product_category'),
+                f"{ad['video_duration']} video" if ad.get('video_duration') else None,
+                f"product named at {ad['time_to_product_mention']}" if ad.get('time_to_product_mention') else None,
+            ]))
+            if detail:
+                print(f"    {detail}")
     else:
         print("\nWinning ads: None found — first mover opportunity")
 

@@ -18,6 +18,11 @@ class WinningAd(TypedDict):
     days_running: int
     ad_format: str
     cta_type: str
+    persona: str
+    publisher_platform: str
+    product_category: str
+    video_duration: str
+    time_to_product_mention: str
     url: str
 
 

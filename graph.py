@@ -149,6 +149,11 @@ _SYNTHESIS_TOOL = {
                         "days_running": {"type": "string"},
                         "ad_format": {"type": ["string", "null"]},
                         "cta_type": {"type": ["string", "null"]},
+                        "persona": {"type": ["string", "null"]},
+                        "publisher_platform": {"type": ["string", "null"]},
+                        "product_category": {"type": ["string", "null"]},
+                        "video_duration": {"type": ["string", "null"]},
+                        "time_to_product_mention": {"type": ["string", "null"]},
                         "url": {"type": "string"},
                     },
                     "required": ["brand", "hook_text", "emotional_driver", "days_running", "url"],
@@ -434,6 +439,21 @@ def collect_youtube(state: AgentState) -> dict:
     return get_breaker("youtube").call(_fetch) or {"youtube_videos": []}
 
 
+def _foreplay_hook_text(ad: dict) -> str | None:
+    transcript = ad.get("timestamped_transcription")
+    if transcript:
+        return transcript[0].get("sentence", "").strip()
+    return ad.get("full_transcription") or ad.get("headline") or ad.get("description")
+
+
+def _foreplay_persona(ad: dict) -> str:
+    persona = ad.get("persona") or {}
+    age = persona.get("age")
+    gender = persona.get("gender")
+    parts = [p for p in (age, gender) if p and p != "unknown"]
+    return ", ".join(parts)
+
+
 def collect_foreplay(state: AgentState) -> dict:
     def _fetch():
         url = "https://public.api.foreplay.co/api/discovery/ads?" + urllib.parse.urlencode({
@@ -452,11 +472,20 @@ def collect_foreplay(state: AgentState) -> dict:
         return {"foreplay_ads": [
             {
                 "ad_id": ad.get("id"),
-                "hook_text": ad.get("headline") or ad.get("description"),
+                "hook_text": _foreplay_hook_text(ad),
                 "emotional_driver": max(ad["emotional_drivers"], key=ad["emotional_drivers"].get) if ad.get("emotional_drivers") else None,
                 "days_running": (ad.get("running_duration") or {}).get("days"),
                 "ad_format": ad.get("display_format"),
                 "cta_type": ad.get("cta_type"),
+                "persona": _foreplay_persona(ad),
+                "publisher_platform": ", ".join(ad.get("publisher_platform") or []),
+                "product_category": ad.get("product_category") or "",
+                "video_duration": f"{ad['video_duration']:.0f}s" if ad.get("video_duration") else "",
+                "time_to_product_mention": (
+                    f"{ad['time_product_was_mentioned']:.0f}s"
+                    if ad.get("time_product_was_mentioned") is not None and ad["time_product_was_mentioned"] >= 0
+                    else ""
+                ),
                 "brand": ad.get("name"),
                 "url": ad.get("link_url") or ad.get("foreplay_url"),
             }
@@ -763,7 +792,10 @@ def _full_corpus(state: AgentState) -> str:
         parts.append(
             f"[Ad ({ad.get('brand') or ''}): {ad.get('url') or ''}] hook: {ad.get('hook_text') or ''} | "
             f"driver: {ad.get('emotional_driver') or ''} | {ad.get('days_running') or ''} days running | "
-            f"format: {ad.get('ad_format') or ''} | cta: {ad.get('cta_type') or ''}"
+            f"format: {ad.get('ad_format') or ''} | cta: {ad.get('cta_type') or ''} | "
+            f"targeting: {ad.get('persona') or ''} | platforms: {ad.get('publisher_platform') or ''} | "
+            f"category: {ad.get('product_category') or ''} | video length: {ad.get('video_duration') or ''} | "
+            f"product mentioned at: {ad.get('time_to_product_mention') or ''}"
         )
     for p in state["twitter_posts"]:
         parts.append(f"[Twitter: {p.get('url') or ''}] @{p.get('author') or ''}: {p.get('text') or ''} (likes: {p.get('like_count',0)})")
@@ -805,7 +837,7 @@ recommended_angle: one sentence. The creative direction. Emotion arc + anchor + 
 
 winning_ad_angle: the single strongest angle to test. One sentence.
 
-winning_ads: top 3 from Foreplay data only, using the exact values already present in the collected Ad entries — do not invent your own structure. For each: brand (exact name), hook_text (the ad's exact headline/description), emotional_driver, days_running (number only), ad_format (video/image/carousel — null if not present), cta_type (the ad's call-to-action — null if not present), and url. If Foreplay returned no results write empty list.
+winning_ads: top 3 from Foreplay data only, using the exact values already present in the collected Ad entries — do not invent your own structure. For each: brand (exact name), hook_text (the ad's exact hook — this is the ad's actual spoken opening line when the entry has one, otherwise its headline/description), emotional_driver, days_running (number only), ad_format (video/image/carousel — null if not present), cta_type (the ad's call-to-action — null if not present), persona (who it targets, e.g. "35-50, woman" — null if not present), publisher_platform (where it runs, e.g. "facebook, instagram" — null if not present), product_category (null if not present), video_duration (e.g. "21s" — null if not present), time_to_product_mention (how far into the video the product is named, e.g. "4s" — null if not present), and url. If Foreplay returned no results write empty list.
 
 paid_competition: HIGH if 5+ brands running similar angles. MEDIUM if 2-4. LOW if 1. NONE if zero. Be specific.
 
