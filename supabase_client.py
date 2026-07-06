@@ -1,7 +1,10 @@
+import logging
 import os
 from datetime import datetime, timezone
 
 from supabase import create_client
+
+_log = logging.getLogger(__name__)
 
 _client = None
 
@@ -16,13 +19,27 @@ def _db():
     return _client
 
 
-def save_job(job_id: str, audience: str, question: str) -> None:
-    _db().table("research_jobs").insert({
+def save_job(job_id: str, audience: str, question: str, key_suffix: str | None = None) -> None:
+    data = {
         "id": job_id,
         "audience": audience,
         "question": question,
         "status": "queued",
-    }).execute()
+    }
+    if key_suffix is not None:
+        data["key_suffix"] = key_suffix
+    try:
+        _db().table("research_jobs").insert(data).execute()
+    except Exception:
+        # ponytail: schema.sql migration for key_suffix may not be applied yet in this Supabase project.
+        # Fall back to saving without it rather than failing the whole job. Remove once the migration
+        # has been confirmed live everywhere.
+        if "key_suffix" in data:
+            _log.warning("insert with key_suffix failed for job %s; retrying without it", job_id)
+            data.pop("key_suffix")
+            _db().table("research_jobs").insert(data).execute()
+        else:
+            raise
 
 
 def update_job(

@@ -8,6 +8,7 @@ CREATE TABLE research_jobs (
   query_plan JSONB,
   run_cost DECIMAL,
   run_time_seconds DECIMAL,
+  key_suffix TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   completed_at TIMESTAMPTZ
 );

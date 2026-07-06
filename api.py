@@ -33,9 +33,10 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-def _require_api_key(x_api_key: str = Header(...)):
+def _require_api_key(x_api_key: str = Header(...)) -> str:
     if not _API_KEYS or x_api_key not in _API_KEYS:
         raise HTTPException(status_code=401, detail="Invalid API key")
+    return x_api_key[-4:]
 
 
 class ResearchRequest(BaseModel):
@@ -138,7 +139,7 @@ async def create_research(
     body: ResearchRequest,
     x_api_key: str = Header(...),
 ):
-    _require_api_key(x_api_key)
+    key_suffix = _require_api_key(x_api_key)
 
     try:
         audience, question = body.resolve()
@@ -151,7 +152,7 @@ async def create_research(
         raise HTTPException(status_code=429, detail="Too many concurrent jobs. Try again shortly.")
 
     job_id = str(uuid4())
-    save_job(job_id, audience, question)
+    save_job(job_id, audience, question, key_suffix=key_suffix)
     asyncio.create_task(_run_job(job_id, audience, question))
     return {"job_id": job_id, "status": "queued"}
 
